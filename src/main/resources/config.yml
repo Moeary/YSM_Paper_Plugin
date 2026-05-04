@@ -1,0 +1,91 @@
+# YSM client protocol observed in ysm-2.6.5 for Minecraft 1.21.1.
+protocol-version: "2.6.0"
+channel: "yes_steve_model:2_6_0"
+
+# Send a handshake shortly after join. The delay gives the client mod time to
+# finish registering its custom payload receiver.
+handshake-delay-ticks: 20
+handshake-retries: 2
+handshake-retry-interval-ticks: 60
+
+# Logs raw subpacket ids and sizes from the YSM channel.
+debug: false
+
+# Operational logs for Paper-side model scanning and packet distribution.
+logging:
+  # Writes one log line for every successfully probed .ysm model during startup
+  # scans and /paperysm models reload.
+  model-scan-details: true
+  # Writes per-viewer packet send lines plus a hex preview when /paperysm apply
+  # distributes an entity model-state update.
+  packet-details: true
+  packet-hex-preview-bytes: 96
+  raw-packet-hex-preview-bytes: 128
+
+# Local encrypted model repository. Relative paths are resolved under the
+# plugin data folder, usually plugins/PaperYSM/.
+models-dir: "models"
+scan-models-on-enable: true
+
+# Internal model distribution staging. This prepares decrypted V3 archives as
+# chunked server-side transfer packages. Transfer chunks currently use the
+# washed-zstd payload to keep memory/network cost close to the original cache
+# path; the native/raw protocol sender still needs to be completed before
+# ordinary clients can consume them without local models.
+distribution:
+  prepare-on-reload: true
+  chunk-bytes: 24576
+  cache-dir: "cache/distribution"
+  # False keeps decrypted payloads in memory only. Enable for packet/native
+  # comparisons on a controlled test server.
+  write-cache-files: false
+
+# Java-layer sync packets that the original server sends after the 51/52
+# handshake. This advertises server-authorized model ids; native/raw cache data
+# is still a separate sync path.
+sync:
+  send-authorized-models-on-handshake: true
+  # Log a clear warning when the Java-layer handshake/auth succeeded but the
+  # native id=1 cache stream has not been generated yet.
+  warn-missing-native-sync-on-handshake: true
+  # Controlled reverse-engineering aid: replay raw S2C id=1 packet bodies from
+  # sync.raw-replay-dir. Replay accepts raw .bin bodies and Freesia debug
+  # .log/.txt S2C hex dumps. Command mode "freesia" paces the first two
+  # packets around client C2S id=2 replies, matching the Worker bootstrap.
+  # Keep this disabled for normal servers.
+  enable-raw-replay: false
+  raw-replay-dir: "captures/replay"
+  raw-replay-interval-ticks: 2
+  raw-replay-handshake-timeout-ticks: 1500
+  # Controlled test-server convenience: after a compatible 51/52 handshake,
+  # schedule the Freesia-derived native cache replay automatically. This is the
+  # same path as /paperysm dist nativecache <player> <capture> and should stay
+  # disabled unless the referenced captures/native-cache/<capture> fixture is
+  # present and trusted for that server.
+  auto-native-cache-on-handshake: false
+  auto-native-cache-capture: "freesia-latest"
+  auto-native-cache-delay-ticks: 20
+  auto-native-cache-interval-ticks: 2
+  auto-native-cache-chunk-bytes: 29963
+  # Experimental native/raw sync probe. When enabled, PaperYSM sends one
+  # generated S2C id=1 type=1 bootstrap packet after handshake so we can see
+  # whether the client answers with C2S id=2. Keep disabled on normal servers
+  # until the type=3/model cache stream is complete.
+  experimental-bootstrap-on-handshake: false
+  # zero matches the most likely blank initial transport key; sequence is a
+  # deterministic fallback for reverse-engineering comparisons.
+  experimental-bootstrap-mode: "zero"
+  experimental-probe-interval-ticks: 8
+
+# Capture C2S id=2 raw/native packets from YSM clients. These captures are used
+# to finish the no-worker model distribution protocol.
+capture:
+  client-raw-packets: true
+  raw-packet-dir: "captures/raw"
+
+native:
+  # Future no-worker path. When enabled, this will load our reimplementation of
+  # the ysm-core server-side packet/cache routines instead of using Freesia's
+  # Fabric Worker relay.
+  enabled: false
+  mode: "java"

@@ -1,0 +1,15 @@
+name: PaperYSM
+version: ${project.version}
+main: com.ysm.paper.PaperYsmPlugin
+api-version: '1.21'
+author: YSMParser contributors
+description: Paper-side Yes Steve Model protocol bridge prototype.
+commands:
+  paperysm:
+    description: Inspect and drive the PaperYSM bridge.
+    usage: /paperysm <status|handshake|debug|models|dist|apply|native>
+    permission: paperysm.admin
+permissions:
+  paperysm.admin:
+    description: Allows PaperYSM administrative commands.
+    default: op

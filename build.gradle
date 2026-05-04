@@ -1,0 +1,174 @@
+plugins {
+    id "java"
+}
+
+group = "com.ysm.paper"
+version = "0.1.0-SNAPSHOT"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(22)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = 21
+}
+
+dependencies {
+    compileOnly "io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT"
+    implementation "io.airlift:aircompressor:0.27"
+}
+
+processResources {
+    filteringCharset = "UTF-8"
+    filesMatching("plugin.yml") {
+        expand(project: [version: project.version])
+    }
+}
+
+jar {
+    archiveBaseName = "paper-ysm"
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from {
+        configurations.runtimeClasspath
+                .findAll { it.name.endsWith(".jar") }
+                .collect { zipTree(it) }
+    }
+}
+
+def repoRoot = layout.projectDirectory.dir("..").asFile
+def vectorToolName = System.getProperty("os.name").toLowerCase().contains("windows")
+        ? "YSMCryptoVectors.exe"
+        : "YSMCryptoVectors"
+def vectorTool = layout.buildDirectory.file("crypto-vectors/${vectorToolName}")
+def vectorFile = layout.buildDirectory.file("generated-test-resources/ysm-crypto-vectors.json")
+
+tasks.register("cryptoSelfTest", JavaExec) {
+    dependsOn("testClasses")
+    classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
+    mainClass = "com.ysm.paper.nativebridge.crypto.YsmCryptoSelfTestMain"
+}
+
+tasks.register("rawPacketSelfTest", JavaExec) {
+    dependsOn("testClasses")
+    classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
+    mainClass = "com.ysm.paper.nativebridge.crypto.YsmRawPacketCodecSelfTestMain"
+}
+
+tasks.register("analyzeFreesiaCapture", JavaExec) {
+    dependsOn("testClasses")
+    classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
+    mainClass = "com.ysm.paper.nativebridge.sync.FreesiaCaptureAnalyzerMain"
+
+    doFirst {
+        if (!project.hasProperty("freesiaLog")) {
+            throw new GradleException("Pass -PfreesiaLog=<path-to-freesia-latest.log>")
+        }
+        args(project.property("freesiaLog").toString())
+        if (project.hasProperty("freesiaDumpDir")) {
+            args(project.property("freesiaDumpDir").toString())
+        }
+    }
+}
+
+tasks.register("ysmNativeDllProbe", JavaExec) {
+    dependsOn("testClasses")
+    classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
+    mainClass = "com.ysm.paper.nativebridge.dll.YsmNativeDllProbeMain"
+
+    doFirst {
+        if (!project.hasProperty("ysmNativeDll")) {
+            throw new GradleException("Pass -PysmNativeDll=<path-to-ysm-core.dll>")
+        }
+        args(project.property("ysmNativeDll").toString())
+    }
+}
+
+tasks.register("compileCppVectorTool", Exec) {
+    workingDir = repoRoot
+    inputs.file(new File(repoRoot, "YSMParser/tools/YSMCryptoVectors.cpp"))
+    inputs.file(new File(repoRoot, "external/cityhash/src/city.cc"))
+    inputs.file(new File(repoRoot, "external/xchacha20/src/xchacha20.cc"))
+    outputs.file(vectorTool)
+
+    doFirst {
+        vectorTool.get().asFile.parentFile.mkdirs()
+    }
+
+    commandLine(
+            "g++",
+            "-std=c++20",
+            "-O2",
+            "-I", "external/cityhash/src",
+            "-I", "external/xchacha20/src",
+            "YSMParser/tools/YSMCryptoVectors.cpp",
+            "external/cityhash/src/city.cc",
+            "external/xchacha20/src/xchacha20.cc",
+            "-o", vectorTool.get().asFile.absolutePath
+    )
+}
+
+tasks.register("generateCppVectors", Exec) {
+    dependsOn("compileCppVectorTool")
+    workingDir = repoRoot
+    outputs.file(vectorFile)
+
+    doFirst {
+        vectorFile.get().asFile.parentFile.mkdirs()
+    }
+
+    commandLine(vectorTool.get().asFile.absolutePath, vectorFile.get().asFile.absolutePath)
+}
+
+tasks.register("verifyCppVectors", JavaExec) {
+    dependsOn("generateCppVectors", "testClasses")
+    classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
+    mainClass = "com.ysm.paper.nativebridge.crypto.YsmCryptoVectorVerifierMain"
+    args(vectorFile.get().asFile.absolutePath)
+}
+
+tasks.register("probeYsmModels", JavaExec) {
+    dependsOn("classes")
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "com.ysm.paper.nativebridge.crypto.YsmArchiveProbeMain"
+
+    doFirst {
+        if (!project.hasProperty("ysmProbeInput")) {
+            throw new GradleException("Pass -PysmProbeInput=<file-or-directory>")
+        }
+        args(project.property("ysmProbeInput").toString())
+        if (project.hasProperty("ysmProbeLimit")) {
+            args("--limit", project.property("ysmProbeLimit").toString())
+        }
+        if (project.hasProperty("ysmProbeDumpDecompressed")) {
+            args("--dump-decompressed", project.property("ysmProbeDumpDecompressed").toString())
+        }
+        if (project.hasProperty("ysmProbeDumpZstd")) {
+            args("--dump-zstd", project.property("ysmProbeDumpZstd").toString())
+        }
+    }
+}
+
+tasks.register("prepareYsmModels", JavaExec) {
+    dependsOn("classes")
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "com.ysm.paper.model.YsmDistributionProbeMain"
+
+    doFirst {
+        if (!project.hasProperty("ysmPrepareInput")) {
+            throw new GradleException("Pass -PysmPrepareInput=<file-or-directory>")
+        }
+        args(project.property("ysmPrepareInput").toString())
+        if (project.hasProperty("ysmPrepareLimit")) {
+            args("--limit", project.property("ysmPrepareLimit").toString())
+        }
+        if (project.hasProperty("ysmPrepareChunkBytes")) {
+            args("--chunk-bytes", project.property("ysmPrepareChunkBytes").toString())
+        }
+        if (project.hasProperty("ysmPrepareWriteCache")) {
+            args("--write-cache", project.property("ysmPrepareWriteCache").toString())
+        }
+    }
+}

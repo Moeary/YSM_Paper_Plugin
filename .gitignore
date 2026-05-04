@@ -1,0 +1,17 @@
+# Build outputs
+build/
+.gradle/
+target/
+*.class
+javac.*.args
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+Desktop.ini
+
+# Runtime logs and generated Minecraft state
+test-server/*
+references/*

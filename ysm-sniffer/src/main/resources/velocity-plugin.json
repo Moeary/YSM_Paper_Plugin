@@ -1,0 +1,9 @@
+﻿{
+  "id": "ysm_sniffer",
+  "name": "YSMSniffer",
+  "version": "0.1.1",
+  "main": "com.ysm.sniffer.YsmSniffer",
+  "authors": [
+    "PaperYSM"
+  ]
+}

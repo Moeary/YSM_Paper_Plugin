@@ -1,0 +1,7 @@
+* text=auto eol=crlf
+*.sh text eol=lf
+*.png binary
+*.jar binary
+*.bin binary
+*.ysm binary
+*.dll binary
