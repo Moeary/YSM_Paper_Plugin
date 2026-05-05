@@ -119,6 +119,13 @@ disk instead of loading every mapped cache body into a player session. The old
 single-file `server-cache.bin` fallback still exists for legacy captures, but
 large libraries should use `cache-map.tsv` entries.
 
+For bulk worker experiments, `scripts\export-worker-cache-batch.bat` is the
+safer path. Snapshot the worker's clean/default `cache/server` state first,
+then add one source folder such as `R18模型整合`, start the worker once, and run
+the export action. The script copies only cache files that appeared after the
+snapshot, names them from the source `.ysm` relative paths, and records `.ysm`
+SHA256 values to prevent duplicate model imports.
+
 The Yes Steve Model technical report adds one important constraint for the
 generated path: packet type3 should establish the server/client cache key pair,
 and the bytes sent in type5 are the server-cache form. The client then decrypts

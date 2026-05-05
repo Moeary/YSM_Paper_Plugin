@@ -42,13 +42,14 @@ public record YsmModelProfile(
     }
 
     public boolean hasAnimationMapping() {
-        return !extraAnimations.isEmpty() || !extraAnimationButtons.isEmpty();
+        return !extraAnimations.isEmpty() || !extraAnimationButtons.isEmpty() || !extraAnimationClassifies.isEmpty();
     }
 
     public String compact() {
         return "metadataName=" + display(metadataName)
                 + ", extraAnimations=" + extraAnimations.size()
                 + ", buttons=" + extraAnimationButtons.size()
+                + ", classifies=" + extraAnimationClassifies.size()
                 + ", defaultTexture=" + display(defaultTexture)
                 + ", previewAnimation=" + display(previewAnimation);
     }
@@ -56,7 +57,8 @@ public record YsmModelProfile(
     public String animationDebugSummary(int limit) {
         int max = Math.max(0, limit);
         return "extraAnimations=" + summarizeExtraAnimations(max)
-                + ", buttons=" + summarizeButtons(max);
+                + ", buttons=" + summarizeButtons(max)
+                + ", classifies=" + summarizeClassifies(max);
     }
 
     private String summarizeExtraAnimations(int limit) {
@@ -99,6 +101,26 @@ public record YsmModelProfile(
         }
         if (extraAnimationButtons.size() > count) {
             builder.append(", ... +").append(extraAnimationButtons.size() - count);
+        }
+        return builder.append(']').toString();
+    }
+
+    private String summarizeClassifies(int limit) {
+        if (extraAnimationClassifies.isEmpty() || limit == 0) {
+            return "[]";
+        }
+        StringBuilder builder = new StringBuilder("[");
+        int count = Math.min(limit, extraAnimationClassifies.size());
+        for (int i = 0; i < count; i++) {
+            if (i > 0) {
+                builder.append(", ");
+            }
+            ExtraAnimationClassify classify = extraAnimationClassifies.get(i);
+            builder.append(i).append(':').append(display(classify.id()))
+                    .append('/').append(classify.animations().size());
+        }
+        if (extraAnimationClassifies.size() > count) {
+            builder.append(", ... +").append(extraAnimationClassifies.size() - count);
         }
         return builder.append(']').toString();
     }

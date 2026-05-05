@@ -91,7 +91,7 @@ tasks.register("analyzeNativeCacheFixture", JavaExec) {
 
     doFirst {
         args(project.findProperty("ysmNativeCacheFixture")
-                ?: "test-server/direct-paper/plugins/PaperYSM/captures/native-cache/freesia-latest")
+                ?: "test-server/direct-paper/plugins/PaperYSM/captures/native-cache/freesia-from-velocity")
         if (project.hasProperty("ysmNativeCacheFilter")) {
             args(project.property("ysmNativeCacheFilter").toString())
         }
@@ -100,6 +100,22 @@ tasks.register("analyzeNativeCacheFixture", JavaExec) {
                 args(".ysm")
             }
             args(project.property("ysmNativeCacheLocalModel").toString())
+        }
+    }
+}
+
+tasks.register("exportFreesiaNativeFixture", JavaExec) {
+    dependsOn("testClasses")
+    classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
+    mainClass = "com.ysm.paper.nativebridge.crypto.FreesiaNativeFixtureExporterMain"
+
+    doFirst {
+        args(project.findProperty("freesiaCaptureDir")
+                ?: "test-server/velocity-proxy/logs/latest.log")
+        args(project.findProperty("freesiaFixtureOut")
+                ?: "test-server/direct-paper/plugins/PaperYSM/captures/native-cache/freesia-from-velocity")
+        if (project.hasProperty("freesiaC2sDir")) {
+            args("--c2s-dir", project.property("freesiaC2sDir").toString())
         }
     }
 }

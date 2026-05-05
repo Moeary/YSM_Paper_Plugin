@@ -4,7 +4,7 @@ param(
     [string]$Mode = "status",
 
     [string]$Model = "all",
-    [string]$Capture = "freesia-latest",
+    [string]$Capture = "freesia-from-velocity",
     [string]$TokenSalt = "",
     [ValidateSet("legacy", "keys")]
     [string]$GeneratedLayout = "legacy",

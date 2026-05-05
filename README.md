@@ -150,6 +150,21 @@ scripts\sync-worker-native-cache.bat -ReorganizeExisting
 Use `-DryRun` first to preview changes. The script updates `cache-map.tsv` and
 creates a timestamped backup; it does not delete the original cache files.
 
+For worker-side batch imports, snapshot the worker cache after the clean/default
+model run, then export newly generated cache files after adding a model folder:
+
+```powershell
+scripts\export-worker-cache-batch.bat snapshot -SnapshotName default-clean
+scripts\export-worker-cache-batch.bat scan -Group "R18模型整合" -ModelSourceDir "D:\Code_Project\Paper-YSM\test-server\freesia-worker\config\yes_steve_model\R18模型整合"
+scripts\export-worker-cache-batch.bat export -Group "R18模型整合" -SnapshotName default-clean
+```
+
+The export script copies worker cache files into
+`server-cache/<group>/...`, names them from the source `.ysm` path, and records
+model SHA256 values so later batches can skip duplicates. It intentionally does
+not invent `cache-map.tsv` token entries; Paper still needs the matching
+worker/Freesia type3 token map for client-visible sync.
+
 ## Documentation
 
 - `docs/ysm-sync-progress.md`: current protocol progress and flowchart.

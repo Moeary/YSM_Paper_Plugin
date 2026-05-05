@@ -1,0 +1,28 @@
+Use case: infographic-diagram
+Asset type: documentation flowchart for a Java Paper plugin repository
+Primary request: Create a polished technical flowchart explaining how Paper-YSM currently differs from FreesiaII for YSM native-cache distribution, while preserving the future native .ysm route.
+Style/medium: clean engineering documentation infographic, flat vector-like raster image, crisp boxes and arrows, light background, restrained colors, no decorative characters.
+Composition/framing: landscape 16:9 layout. Split into three horizontal lanes with clear headers: "Reference FreesiaII path", "Captured fixture bridge", and "Paper-YSM current path". Add a smaller dashed future lane at the bottom titled "Future native route". Spell "FreesiaII" exactly with two uppercase capital I characters at the end, not lowercase L characters.
+Text (verbatim): Use exactly these labels where possible:
+"Freesia worker"
+"Reference FreesiaII path"
+"generates real YSM native cache"
+"Velocity proxy"
+"ysm-sniffer"
+"captures real plugin messages"
+"latest.log"
+"S2C native packet hex"
+"export-freesia-native-fixture.bat"
+"combines logs + captures"
+"PaperYSM native-cache fixture"
+"Direct Paper server"
+"PaperYSM distributes cache"
+"Players join Paper directly"
+"No extra player proxy"
+"Future: decrypt .ysm and generate native cache in PaperYSM"
+Flow logic:
+1. Reference FreesiaII path: Freesia worker -> Velocity proxy -> YSM client. Show that this path produces the trusted reference behavior.
+2. Captured fixture bridge: Velocity proxy and ysm-sniffer produce ysm-sniffer-captures; latest.log contributes S2C native packet hex; both feed export-freesia-native-fixture.bat; exporter produces PaperYSM native-cache fixture.
+3. Paper-YSM current path: Direct Paper server reads PaperYSM native-cache fixture; PaperYSM distributes cache to players; players join Paper directly with no extra player proxy.
+4. Future native route: dashed arrow from ".ysm model packs" to "decrypt .ysm and generate native cache in PaperYSM", then into the Direct Paper server path.
+Constraints: This is for technical documentation, so prioritize readable hierarchy, simple arrows, and accurate labels. Keep text large and legible. Do not invent unrelated systems. Do not show Java code. Do not include logos, watermarks, mock app chrome, or people.

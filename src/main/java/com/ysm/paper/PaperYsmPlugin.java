@@ -79,6 +79,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
     private static final String REPORT_TYPE3_KEY_C2S = "c2s";
     private static final String REPORT_TYPE3_KEY_BOTH = "both";
     private static final String NATIVE_CACHE_REPLAY_ROOT = "captures/native-cache";
+    private static final String DEFAULT_NATIVE_CACHE_SOURCE = "freesia-from-velocity";
     private static final int FREESIA_NATIVE_TYPE1_PADDING_BYTES = 70;
     private static final int FREESIA_NATIVE_TYPE3_PADDING_BYTES = 115;
     private static final int FREESIA_NATIVE_CACHE_CHUNK_BYTES = 29963;
@@ -596,7 +597,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
         if ("default".equalsIgnoreCase(target) || "all".equalsIgnoreCase(target) || "*".equals(target)) {
             if ("clear".equalsIgnoreCase(source)) {
-                source = "freesia-latest";
+                source = DEFAULT_NATIVE_CACHE_SOURCE;
             }
             setDefaultNativeCacheSource(source, true);
             if ("all".equalsIgnoreCase(target) || "*".equals(target)) {
@@ -754,12 +755,12 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
     private String nativeCacheDefaultSource() {
         return autoNativeCacheCaptureName == null || autoNativeCacheCaptureName.isBlank()
-                ? "freesia-latest"
+                ? DEFAULT_NATIVE_CACHE_SOURCE
                 : autoNativeCacheCaptureName.trim();
     }
 
     private void setDefaultNativeCacheSource(String source, boolean persist) {
-        autoNativeCacheCaptureName = source == null || source.isBlank() ? "freesia-latest" : source.trim();
+        autoNativeCacheCaptureName = source == null || source.isBlank() ? DEFAULT_NATIVE_CACHE_SOURCE : source.trim();
         if (persist) {
             getConfig().set("sync.auto-native-cache-capture", autoNativeCacheCaptureName);
             saveConfig();
@@ -769,7 +770,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
     private List<String> nativeCacheSourceSuggestions(String prefix) {
         String normalizedPrefix = prefix.toLowerCase(Locale.ROOT);
         Path root = getDataFolder().toPath().resolve(NATIVE_CACHE_REPLAY_ROOT);
-        List<String> sources = new ArrayList<>(List.of(nativeCacheDefaultSource(), "freesia-latest"));
+        List<String> sources = new ArrayList<>(List.of(nativeCacheDefaultSource(), DEFAULT_NATIVE_CACHE_SOURCE));
         if (Files.isDirectory(root)) {
             try {
                 Files.list(root)
@@ -1091,7 +1092,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                 "sync.raw-replay-handshake-timeout-ticks",
                 DEFAULT_RAW_REPLAY_HANDSHAKE_TIMEOUT_TICKS));
         autoNativeCacheOnHandshake = getConfig().getBoolean("sync.auto-native-cache-on-handshake", false);
-        autoNativeCacheCaptureName = getConfig().getString("sync.auto-native-cache-capture", "freesia-latest");
+        autoNativeCacheCaptureName = getConfig().getString("sync.auto-native-cache-capture", DEFAULT_NATIVE_CACHE_SOURCE);
         autoNativeCacheDelayTicks = Math.max(1, getConfig().getInt("sync.auto-native-cache-delay-ticks", 20));
         autoNativeCacheIntervalTicks = Math.max(1, getConfig().getInt(
                 "sync.auto-native-cache-interval-ticks",
@@ -1387,6 +1388,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                 + ", texture=" + logValue(resolution.textureId())
                 + ", profileExtraAnimations=" + resolution.profile().extraAnimations().size()
                 + ", profileButtons=" + resolution.profile().extraAnimationButtons().size()
+                + ", profileClassifies=" + resolution.profile().extraAnimationClassifies().size()
                 + ", compatibleViewers=" + sent + "/" + Bukkit.getOnlinePlayers().size()
                 + ".");
         if (resolution.source().startsWith("fallback")) {
@@ -1413,17 +1415,55 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         String repositoryModelId = entry.map(YsmModelRepository.Entry::modelId).orElse("");
         YsmModelProfile profile = entry.map(YsmModelRepository.Entry::profile).orElse(YsmModelProfile.EMPTY);
 
-        if (!request.name().isEmpty()) {
-            return new AnimationResolution(
-                    request.name(),
-                    "client-name",
-                    selectedModelId,
-                    repositoryModelId,
-                    textureId,
-                    profile);
-        }
         if (request.action() < 0) {
             return new AnimationResolution("", "stop", selectedModelId, repositoryModelId, textureId, profile);
+        }
+
+        if (!request.name().isEmpty()) {
+            Optional<String> classifiedName = classifiedAnimationProtocolName(profile, request.name(), request.action());
+            if (classifiedName.isPresent()) {
+                return new AnimationResolution(
+                        classifiedName.get(),
+                        "profile-classify-index",
+                        selectedModelId,
+                        repositoryModelId,
+                        textureId,
+                        profile);
+            }
+            Optional<String> buttonFormName = buttonFormAnimationProtocolName(profile, request.name(), request.action());
+            if (buttonFormName.isPresent()) {
+                return new AnimationResolution(
+                        buttonFormName.get(),
+                        "profile-button-form-index",
+                        selectedModelId,
+                        repositoryModelId,
+                        textureId,
+                        profile);
+            }
+            if (request.action() > 0) {
+                Optional<String> oneBasedClassifiedName =
+                        classifiedAnimationProtocolName(profile, request.name(), request.action() - 1);
+                if (oneBasedClassifiedName.isPresent()) {
+                    return new AnimationResolution(
+                            oneBasedClassifiedName.get(),
+                            "profile-classify-index-one-based",
+                            selectedModelId,
+                            repositoryModelId,
+                            textureId,
+                            profile);
+                }
+                Optional<String> oneBasedButtonFormName =
+                        buttonFormAnimationProtocolName(profile, request.name(), request.action() - 1);
+                if (oneBasedButtonFormName.isPresent()) {
+                    return new AnimationResolution(
+                            oneBasedButtonFormName.get(),
+                            "profile-button-form-index-one-based",
+                            selectedModelId,
+                            repositoryModelId,
+                            textureId,
+                            profile);
+                }
+            }
         }
 
         Optional<String> buttonName = profile.extraAnimationButtonAt(request.action())
@@ -1476,6 +1516,16 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             }
         }
 
+        if (!request.name().isEmpty()) {
+            return new AnimationResolution(
+                    request.name(),
+                    profile.hasAnimationMapping() ? "client-name-after-profile-miss" : "client-name",
+                    selectedModelId,
+                    repositoryModelId,
+                    textureId,
+                    profile);
+        }
+
         return new AnimationResolution(
                 "extra" + request.action(),
                 profile.hasAnimationMapping() ? "fallback-missing-action" : "fallback-no-profile-mapping",
@@ -1493,6 +1543,56 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             return Optional.of(button.name());
         }
         return Optional.empty();
+    }
+
+    private static Optional<String> classifiedAnimationProtocolName(
+            YsmModelProfile profile,
+            String requestName,
+            int index) {
+        if (index < 0) {
+            return Optional.empty();
+        }
+        for (YsmModelProfile.ExtraAnimationClassify classify : profile.extraAnimationClassifies()) {
+            if (!animationMenuNameMatches(classify.id(), requestName)) {
+                continue;
+            }
+            if (index < classify.animations().size()) {
+                return extraAnimationProtocolName(classify.animations().get(index));
+            }
+            return Optional.empty();
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> buttonFormAnimationProtocolName(
+            YsmModelProfile profile,
+            String requestName,
+            int index) {
+        if (index < 0) {
+            return Optional.empty();
+        }
+        for (YsmModelProfile.ExtraAnimationButton button : profile.extraAnimationButtons()) {
+            if (!animationMenuNameMatches(button.id(), requestName)
+                    && !animationMenuNameMatches(button.name(), requestName)) {
+                continue;
+            }
+
+            int cursor = 0;
+            for (YsmModelProfile.ButtonForm form : button.forms()) {
+                for (YsmModelProfile.ExtraAnimation label : form.labels()) {
+                    if (cursor == index) {
+                        return extraAnimationProtocolName(label);
+                    }
+                    cursor++;
+                }
+            }
+            return Optional.empty();
+        }
+        return Optional.empty();
+    }
+
+    private static boolean animationMenuNameMatches(String left, String right) {
+        return left != null && right != null && !left.isEmpty() && left.equals(right);
     }
 
     private static Optional<String> extraAnimationProtocolName(YsmModelProfile.ExtraAnimation animation) {

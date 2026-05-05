@@ -1,6 +1,6 @@
 param(
     [string]$WorkerCacheDir = (Join-Path $PSScriptRoot "..\test-server\freesia-worker\config\yes_steve_model\cache\server"),
-    [string]$PaperFixtureDir = (Join-Path $PSScriptRoot "..\test-server\direct-paper\plugins\PaperYSM\captures\native-cache\freesia-latest"),
+    [string]$PaperFixtureDir = (Join-Path $PSScriptRoot "..\test-server\direct-paper\plugins\PaperYSM\captures\native-cache\freesia-from-velocity"),
     [string]$Group = ("ysm" + [char]0x81ea + [char]0x5e26 + [char]0x6a21 + [char]0x578b),
     [switch]$GroupFromModelName,
     [switch]$ReorganizeExisting,

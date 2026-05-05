@@ -67,7 +67,7 @@ sync:
   # captures/native-cache/<auto-native-cache-capture>. This is what makes the
   # YSM client progress bar and server model picker appear.
   auto-native-cache-on-handshake: true
-  auto-native-cache-capture: "freesia-latest"
+  auto-native-cache-capture: "freesia-from-velocity"
   auto-native-cache-delay-ticks: 20
   # Native type5 send speed. OPs can change this online with
   # /ysm config speed <intervalTicks> <chunkBytes>.

@@ -1,6 +1,6 @@
 param(
     [string]$WorkerRoot = "test-server\freesia-worker",
-    [string]$FixtureRoot = "test-server\direct-paper\plugins\PaperYSM\captures\native-cache\freesia-latest",
+    [string]$FixtureRoot = "test-server\direct-paper\plugins\PaperYSM\captures\native-cache\freesia-from-velocity",
     [string]$ModelName = "拉菲Ⅱ/拉菲Ⅱ_v1.2.ysm"
 )
 
