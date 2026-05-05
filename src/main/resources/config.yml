@@ -23,9 +23,12 @@ logging:
   packet-hex-preview-bytes: 96
   raw-packet-hex-preview-bytes: 128
 
-# Local encrypted model repository. Relative paths are resolved under the
-# plugin data folder, usually plugins/PaperYSM/.
-models-dir: "models"
+# Optional local .ysm model reference directory. PaperYSM uses this mostly to
+# read animation/profile metadata for wheel actions; native cache sync still
+# works without these files. Relative paths are resolved under the plugin data
+# folder, usually plugins/PaperYSM/. In the repository test layout this points
+# at the Freesia worker's real model folder, not a junction shown to the client.
+models-dir: "../../../freesia-worker/config/yes_steve_model/custom"
 scan-models-on-enable: true
 
 # Remember the last YSM model/texture each player selected and re-apply it

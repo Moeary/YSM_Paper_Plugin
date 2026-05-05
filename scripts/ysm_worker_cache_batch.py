@@ -206,6 +206,31 @@ def read_cache_map(path: Path) -> list[CacheRow]:
     return rows
 
 
+def read_export_report_cache_rows(path: Path) -> list[CacheRow]:
+    rows: list[CacheRow] = []
+    if not path.exists():
+        return rows
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        for row in reader:
+            token_hex = (row.get("tokenHex") or "").strip().lower()
+            name = (row.get("name") or "").strip()
+            if not token_hex or not name:
+                continue
+            byte_text = (row.get("totalBytes") or row.get("receivedBytes") or row.get("bytes") or "0").strip()
+            try:
+                byte_count = int(byte_text)
+            except ValueError:
+                byte_count = 0
+            rows.append(CacheRow(
+                token_hex=token_hex,
+                file=(row.get("file") or "").strip(),
+                name=name,
+                bytes=byte_count,
+            ))
+    return rows
+
+
 def write_cache_map(path: Path, rows: list[CacheRow]) -> None:
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
@@ -357,6 +382,14 @@ def action_snapshot(args: argparse.Namespace) -> int:
 
 
 def action_fixture(args: argparse.Namespace) -> int:
+    if not getattr(args, "unsafe_order_pair", False):
+        raise RuntimeError(
+            "Refusing to pair worker cache files with model names by filesystem order. "
+            "That can produce a type3/cache-map pair the YSM client rejects, or worse, "
+            "serve the wrong cache bytes for a model name. Use scripts\\export-freesia-native-fixture.bat "
+            "with a real Velocity/Freesia capture, or rerun with --unsafe-order-pair only for controlled experiments."
+        )
+
     fixture = args.fixture_dir
     cache_map_path = fixture / "cache-map.tsv"
     type3_path = fixture / "type3-body.bin"
@@ -493,6 +526,14 @@ def action_fixture(args: argparse.Namespace) -> int:
 
 
 def action_export(args: argparse.Namespace) -> int:
+    if not getattr(args, "unsafe_order_pair", False):
+        raise RuntimeError(
+            "Refusing worker-cache export by order. The current safe path is: start the full "
+            "Velocity/Freesia stack, trigger a real client sync, then run "
+            "scripts\\export-freesia-native-fixture.bat (or scripts\\paperysm.bat export-capture). "
+            "Use --unsafe-order-pair only for protocol experiments."
+        )
+
     snapshot_file = args.snapshot_dir / f"{args.snapshot_name}.tsv"
     if not snapshot_file.exists():
         raise FileNotFoundError(f"snapshot not found: {snapshot_file}")
@@ -624,6 +665,9 @@ def print_type3_summary(
         name_bytes = len(entry.name.encode("utf-8"))
         if name_bytes > 80:
             long_names.append((name_bytes, len(entry.name), entry.name))
+        if not row.file:
+            missing_files += 1
+            continue
         cache_path = fixture / Path(row.file.replace("/", os.sep))
         if not cache_path.exists():
             missing_files += 1
@@ -657,7 +701,16 @@ def action_type3_inspect(args: argparse.Namespace) -> int:
     fixture, type3_path, cache_map_path = type3_paths(args)
     rows = read_cache_map(cache_map_path)
     body = type3_path.read_bytes()
-    entry_start, entries, tail = parse_manifest_entries(body, rows)
+    try:
+        entry_start, entries, tail = parse_manifest_entries(body, rows)
+    except ValueError as error:
+        report_rows = read_export_report_cache_rows(fixture / "export-report.tsv")
+        if not report_rows:
+            raise
+        print(f"cache-map parse failed: {error}")
+        print("falling back to export-report.tsv tokens for manifest inspection")
+        rows = report_rows
+        entry_start, entries, tail = parse_manifest_entries(body, rows)
     print_type3_summary(fixture, type3_path, cache_map_path, rows, body, entry_start, entries, tail)
 
     if args.report:
@@ -882,6 +935,7 @@ def normalize_legacy_args(argv: list[str]) -> list[str]:
         "-PreserveTail": "--preserve-tail",
         "-RequireRichTail": "--require-rich-tail",
         "-DropTail": "--drop-tail",
+        "-UnsafeOrderPair": "--unsafe-order-pair",
     }
     out = []
     for item in argv:
@@ -925,6 +979,7 @@ def resolve_args(argv: list[str]) -> argparse.Namespace:
     export.add_argument("--auto-tail-backup", action="store_true", default=True)
     export.add_argument("--tail-type3-path", type=Path)
     export.add_argument("--tail-cache-map-path", type=Path)
+    export.add_argument("--unsafe-order-pair", action="store_true")
     export.set_defaults(func=action_export)
 
     fixture = sub.add_parser("fixture")
@@ -937,6 +992,7 @@ def resolve_args(argv: list[str]) -> argparse.Namespace:
     fixture.add_argument("--auto-tail-backup", action="store_true")
     fixture.add_argument("--tail-type3-path", type=Path)
     fixture.add_argument("--tail-cache-map-path", type=Path)
+    fixture.add_argument("--unsafe-order-pair", action="store_true")
     fixture.set_defaults(func=action_fixture)
 
     type3_inspect = sub.add_parser("type3-inspect")

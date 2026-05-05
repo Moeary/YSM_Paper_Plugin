@@ -5,5 +5,11 @@
   "main": "com.ysm.sniffer.YsmSniffer",
   "authors": [
     "PaperYSM"
+  ],
+  "dependencies": [
+    {
+      "id": "packetevents",
+      "optional": true
+    }
   ]
 }

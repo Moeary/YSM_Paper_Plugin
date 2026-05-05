@@ -43,7 +43,7 @@ function Show-Status {
     }
     Write-Host "Direct PaperYSM config:"
     Write-Host "  $ConfigPath"
-    Select-String -LiteralPath $ConfigPath -Pattern "enable-raw-replay|auto-native-cache|auto-generated-cache|experimental-bootstrap|remember-player-models|saved-models-file" |
+    Select-String -LiteralPath $ConfigPath -Pattern "models-dir|enable-raw-replay|auto-native-cache|auto-generated-cache|experimental-bootstrap|remember-player-models|saved-models-file" |
         ForEach-Object { Write-Host ("  " + $_.Line.Trim()) }
 }
 
@@ -166,7 +166,7 @@ logging:
   packet-hex-preview-bytes: 96
   raw-packet-hex-preview-bytes: 128
 
-models-dir: "models"
+models-dir: "../../../freesia-worker/config/yes_steve_model/custom"
 scan-models-on-enable: true
 
 state:

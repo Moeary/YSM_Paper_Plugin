@@ -17,9 +17,9 @@ handles handshake, native-cache replay, saved model state, and diagnostics.
 - Native cache sync defaults to replaying worker/Freesia-derived cache material.
 - After cache sync, YSM clients can select the server model and see model state
   and ordinary animation state across two clients.
-- Wheel/custom animation forwarding is still under investigation. Recent tests
-  show possible animation id/order mismatch, so this area is intentionally not
-  treated as stable yet.
+- Wheel/custom animation forwarding resolves actions from scanned `.ysm`
+  profiles, including nested wheel/classify entries. Keep the corresponding
+  `.ysm` files available under the PaperYSM `models` directory.
 
 ## Repository Layout
 
@@ -96,7 +96,7 @@ scripts\switch-direct-paper-channel.bat freesia
 scripts\switch-direct-paper-channel.bat auth-only
 ```
 
-- `freesia`: direct Paper replays the captured `freesia-latest` native-cache
+- `freesia`: direct Paper replays the captured `freesia-from-velocity` native-cache
   fixture after handshake.
 - `generated`: still exists as a research profile, but is no longer the normal
   path because Java-generated cache bytes are not accepted by the client yet.
@@ -136,38 +136,79 @@ against a local `.ysm`:
 gradle analyzeNativeCacheFixture -PysmNativeCacheFilter="拉菲Ⅱ/拉菲Ⅱ_v1.2.ysm" -PysmNativeCacheLocalModel="test-server/direct-paper/plugins/PaperYSM/models/拉菲Ⅱ/拉菲Ⅱ_v1.2.ysm"
 ```
 
-The current working native-cache replay source is `freesia-latest`. It is built
+The current working native-cache replay source is `freesia-from-velocity`. It is built
 from captured FreesiaII cache material and contains the manifest plus cache
 entries needed by the client progress bar and server model selection.
 
-To reorganize the direct Paper fixture into readable nested cache folders and
-copy any matching latest Freesia worker cache files, run:
+## Model Directory For Animations
 
-```powershell
-scripts\sync-worker-native-cache.bat -ReorganizeExisting
+PaperYSM uses the native-cache fixture for model distribution, but wheel and
+nested-wheel animation mapping still comes from decoded `.ysm` profiles. The
+direct Paper test server now points `models-dir` at the Freesia worker's real
+model folder:
+
+```text
+test-server\freesia-worker\config\yes_steve_model\custom
 ```
 
-Use `-DryRun` first to preview changes. The script updates `cache-map.tsv` and
-creates a timestamped backup; it does not delete the original cache files.
+Do not expose large external model libraries through junctions/symlinks. The
+YSM client browser shows the real relative path and becomes awkward to use.
+Copy model groups into the worker `custom` directory instead, then make a real
+FreesiaII/Velocity capture and export that capture into the Paper fixture.
 
-For worker-side batch imports, snapshot the worker cache after the clean/default
-model run, then export newly generated cache files after adding a model folder:
+When moving the setup to another server, copy both the Paper native-cache
+fixture and any matching `.ysm` model tree used for animation mapping. The
+cache fixture alone is enough for model sync; missing `.ysm` references only
+mean some custom wheel animations cannot be resolved. OPs can change the
+reference directory online:
+
+```text
+/ysm config modeldir <path>
+```
+
+The normal import path is capture-first. Start the full FreesiaII comparison
+stack, join through Velocity with a YSM client, let Freesia complete native
+sync, then export the real type3/type5 bundle:
+
+```powershell
+scripts\start-freesiaii-stack.bat
+scripts\paperysm.bat export-capture
+```
+
+`scripts\sync-velocity-cache-to-paper.bat` is the same capture export wrapped in
+a shorter batch file. For a full portable fixture, clear the client's YSM cache
+before joining Velocity; otherwise Freesia may only send type5 chunks for models
+the client was missing in that run.
+
+The old worker-cache batch tool is now research-only. It can snapshot worker
+`cache/server` and copy newly generated bin files, but it cannot safely invent
+the matching type3 token map. Direct export is blocked unless you pass the
+explicit unsafe flag:
 
 ```powershell
 scripts\export-worker-cache-batch.bat snapshot -SnapshotName default-clean
-scripts\export-worker-cache-batch.bat scan -Group "R18模型整合" -ModelSourceDir "D:\Code_Project\Paper-YSM\test-server\freesia-worker\config\yes_steve_model\R18模型整合"
-scripts\export-worker-cache-batch.bat export -Group "R18模型整合" -SnapshotName default-clean
+scripts\export-worker-cache-batch.bat export -Group "R18模型整合" -SnapshotName default-clean --unsafe-order-pair
 ```
 
-The export script copies worker cache files into
-`server-cache/<group>/...`, names them from the source `.ysm` path, and records
-model SHA256 values so later batches can skip duplicates. It intentionally does
-not invent `cache-map.tsv` token entries; Paper still needs the matching
-worker/Freesia type3 token map for client-visible sync.
+Use that only for protocol experiments. The supported way to make Paper clients
+show new models is still the Velocity/Freesia capture exporter.
+
+For day-to-day local work, `scripts\paperysm.bat` wraps the common workflow in a
+single Python menu:
+
+```powershell
+scripts\paperysm.bat
+```
+
+The same tool also supports direct commands such as `status`, `copy-models`,
+`start-stack`, `export-capture`, `type3-inspect`, `start-worker`, and
+`start-paper`.
 
 ## Documentation
 
 - `docs/ysm-sync-progress.md`: current protocol progress and flowchart.
+- `docs/paperysm-production-deploy.md`: copying PaperYSM to a real Paper server
+  and removing FreesiaII from a Velocity stack.
 - `docs/native-reimplementation.md`: native cache reimplementation notes.
 - `docs/prototype-notes.md`: older working README kept for historical detail.
 

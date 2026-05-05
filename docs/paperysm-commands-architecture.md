@@ -40,7 +40,7 @@ README 里推荐的主路径基本也是这一组：
 /ysm models
 /ysm models reload
 /ysm diagnose [player]
-/ysm source default freesia-latest
+/ysm source default freesia-from-velocity
 /ysm config speed 1 59926
 /ysm apply <player> <modelId> [textureId]
 ```
@@ -77,7 +77,7 @@ README 里推荐的主路径基本也是这一组：
 
 - 协议与握手：`protocol-version`、`channel`、`handshake-delay-ticks`、`handshake-retries`、`handshake-retry-interval-ticks`。
 - 日志：`debug`、`logging.model-scan-details`、`logging.packet-details`、hex preview 字节数。
-- 模型仓库：`models-dir`、`scan-models-on-enable`。
+- 模型/动画参考：`models-dir`、`scan-models-on-enable`。`models-dir` 主要用于读取 `.ysm` profile/extra animation 元数据；native-cache fixture 仍可在没有本地 `.ysm` 文件时同步模型。
 - 玩家状态：`state.remember-player-models`、`state.saved-models-file`。用于记住玩家上次选择的模型/纹理，并在下次兼容握手后自动恢复。
 - 分发准备：`distribution.prepare-on-reload`、`distribution.chunk-bytes`、`distribution.cache-dir`、`distribution.write-cache-files`。
 - 同步行为：`sync.send-authorized-models-on-handshake`、`sync.warn-missing-native-sync-on-handshake`。
@@ -118,7 +118,15 @@ README 里推荐的主路径基本也是这一组：
 
 ### 3. 模型仓库扫描
 
-`models-dir` 默认解析到 `plugins/PaperYSM/models`。扫描逻辑在 `YsmModelRepository`：
+`models-dir` 在本地测试配置中指向 Freesia worker 的真实模型目录
+`test-server/freesia-worker/config/yes_steve_model/custom`，不要用 junction
+把外部大目录暴露给客户端模型浏览器。OP 可以在线修改并立即重扫：
+
+```text
+/ysm config modeldir <path>
+```
+
+扫描逻辑在 `YsmModelRepository`：
 
 - 递归查找 `.ysm` 文件。
 - 用 `YsmArchiveProbe.probe` 验证/解析 V3 加密包。
@@ -126,7 +134,7 @@ README 里推荐的主路径基本也是这一组：
 - 成功项保存版本、format、源文件大小、解压大小、payload summary、extra animation profile。
 - 失败项保存文件和异常信息。
 
-这条路径已经适合产品化保留：管理员只需要把模型放进目录，然后 `/ysm models reload`。
+这条路径适合产品化保留为“动画参考目录”：管理员只需要把模型放进目录，然后 `/ysm models reload`。如果目录为空，cache 同步仍然能跑，只是部分轮盘/多级菜单动作无法解析成模型内真实动画名。
 
 ### 4. 分发准备
 
@@ -142,10 +150,11 @@ README 里推荐的主路径基本也是这一组：
 
 ### 5. Native cache replay 当前工作路径
 
-当前最接近“能用”的同步路径是：
+当前最接近“能用”的同步路径是普通入口 `/ysm sync`，它内部读取
+`sync.auto-native-cache-capture` 配置的 fixture。手动指定 source 时用：
 
 ```text
-/ysm dist nativecache <player> freesia-latest 1 59926
+/ysm sync <player> freesia-from-velocity
 ```
 
 它从插件数据目录下读取：
@@ -168,7 +177,7 @@ captures/native-cache/<captureName>/
 6. 分片发送 S2C type5 chunks。
 7. 发送完成后 replay 已知模型状态，让 viewer 看到之前选过的模型。
 
-这条路径的价值很高：它证明客户端进度条、服务器模型选择、两客户端可见性是通的。它的产品化问题也很明确：依赖捕获 fixture，不能由任意本地 `.ysm` 自动生成。
+这条路径的价值很高：它证明客户端进度条、服务器模型选择、两客户端可见性是通的。它的产品化问题也很明确：依赖真实 Velocity/Freesia 捕获 fixture，不能由任意本地 `.ysm` 自动生成。旧的按 worker `cache/server` 目录顺序拼接 cache 的路径不可靠，不能作为管理员主流程。
 
 ### 6. 模型选择与状态广播
 
@@ -290,7 +299,8 @@ captures/native-cache/<captureName>/
 
 ### P2：把 native cache fixture 变成可替换后端
 
-产品 API 不应该绑定 `freesia-latest`。建议抽象成：
+产品 API 不应该绑定某个具体 fixture 名（例如
+`freesia-from-velocity`）。建议抽象成：
 
 - `NativeCacheSyncService`
 - 当前实现：`FixtureNativeCacheSyncService`

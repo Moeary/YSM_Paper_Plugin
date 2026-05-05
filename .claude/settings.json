@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/Code_Project/YSMParser/**)",
+      "Bash(find . -name \"YsmCrypto.java\" -o -name \"YsmSeeds.java\" -o -name \"YsmRawPacketCodec.java\")"
+    ]
+  }
+}

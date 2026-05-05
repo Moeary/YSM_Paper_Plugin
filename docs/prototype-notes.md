@@ -51,13 +51,15 @@ For the included Paper test server, close the server and run `install-direct-pap
 after building to copy the jar into `test-server/plugins` and clear Paper's remap
 cache.
 
-Runtime model repository:
+Runtime model/animation reference repository:
 
-- By default `models-dir: "models"` resolves under the plugin data folder, so the server scans `plugins/PaperYSM/models`.
+- In the local test layout `models-dir` points at `test-server/freesia-worker/config/yes_steve_model/custom`, the same real folder the worker reads.
 - Nested folders are allowed. A file such as `plugins/PaperYSM/models/author/foo.ysm` becomes model id `author/foo`.
 - Startup scans run when `scan-models-on-enable: true`.
 - Admins can run `/ysm models reload` in game or from console after adding models. This rebuilds the repository without restarting the server.
+- Admins can run `/ysm config modeldir <path>` to change the reference root online.
 - `/ysm models` prints the active root, loaded count, failed count, a few loaded model ids, and early failures.
+- This directory is not the cache distribution source. It is used mostly for model metadata and custom animation mapping; native cache replay can still work if it is empty.
 
 Local test servers:
 

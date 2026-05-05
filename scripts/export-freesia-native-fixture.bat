@@ -4,7 +4,9 @@ set "CAPTURE_DIR=%~1"
 set "OUT_DIR=%~2"
 set "C2S_DIR=%~3"
 if "%CAPTURE_DIR%"=="" (
-  if exist "test-server\velocity-proxy\logs\latest.log" (
+  if exist "test-server\velocity-proxy\plugins\ysm-sniffer-captures\index.tsv" (
+    set "CAPTURE_DIR=test-server\velocity-proxy\plugins\ysm-sniffer-captures"
+  ) else if exist "test-server\velocity-proxy\logs\latest.log" (
     set "CAPTURE_DIR=test-server\velocity-proxy\logs\latest.log"
   ) else (
     set "CAPTURE_DIR=test-server\velocity-proxy\plugins\freesia-debug-capture"
@@ -16,7 +18,7 @@ if "%C2S_DIR%"=="" if /I "%CAPTURE_DIR%"=="test-server\velocity-proxy\logs\lates
 
 if not exist "%CAPTURE_DIR%" (
   echo [PaperYSM] Capture input not found: %CAPTURE_DIR%
-  echo [PaperYSM] Start the Velocity/Freesia worker stack, join once, then rerun this script.
+  echo [PaperYSM] Start the Velocity/Freesia worker stack with ysm-sniffer enabled, join once, then rerun this script.
   exit /b 2
 )
 if not "%C2S_DIR%"=="" if not exist "%C2S_DIR%" (

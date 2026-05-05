@@ -628,6 +628,8 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         String key = args.length >= 2 ? args[1].toLowerCase(Locale.ROOT) : "status";
         if ("status".equals(key)) {
             sender.sendMessage(ChatColor.AQUA + "YSM cache source: " + nativeCacheDefaultSource());
+            sender.sendMessage(ChatColor.AQUA + "YSM animation model-dir: "
+                    + resolvePluginPath(modelsDir).toAbsolutePath());
             sender.sendMessage(ChatColor.AQUA + "YSM autosync: " + autoNativeCacheOnHandshake
                     + ", delay=" + autoNativeCacheDelayTicks
                     + "t, speed=" + autoNativeCacheIntervalTicks + "t/"
@@ -636,7 +638,8 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                     + ", packetLog=" + logPacketDetails
                     + ", modelScanLog=" + logModelScanDetails
                     + ", captureClientRaw=" + captureClientRawPackets + ".");
-            sender.sendMessage(ChatColor.GRAY + "Usage: /ysm config <source|speed|autosync|packetlog|modelscan|capture> ...");
+            sender.sendMessage(ChatColor.GRAY
+                    + "Usage: /ysm config <source|speed|autosync|packetlog|modelscan|modeldir|capture> ...");
             return true;
         }
         if ("source".equals(key)) {
@@ -696,6 +699,28 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             sender.sendMessage(ChatColor.GREEN + "YSM model scan detail logging is now " + logModelScanDetails + ".");
             return true;
         }
+        if ("modeldir".equals(key) || "modelsdir".equals(key)) {
+            if (args.length < 3) {
+                sender.sendMessage(ChatColor.AQUA + "YSM animation model-dir: "
+                        + resolvePluginPath(modelsDir).toAbsolutePath());
+                sender.sendMessage(ChatColor.GRAY + "Usage: /ysm config modeldir <path>");
+                return true;
+            }
+            String next = String.join(" ", Arrays.copyOfRange(args, 2, args.length)).trim();
+            if (next.isEmpty()) {
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm config modeldir <path>");
+                return true;
+            }
+            modelsDir = next;
+            getConfig().set("models-dir", modelsDir);
+            saveConfig();
+            reloadModelRepository(true);
+            sender.sendMessage(ChatColor.GREEN + "YSM animation model-dir is now "
+                    + resolvePluginPath(modelsDir).toAbsolutePath() + ".");
+            sender.sendMessage(ChatColor.GRAY
+                    + "This directory is only used as an animation/model metadata reference; native cache sync can still run without it.");
+            return true;
+        }
         if ("capture".equals(key)) {
             Boolean value = parseToggle(sender, args, 2, "capture");
             if (value == null) {
@@ -708,7 +733,8 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             return true;
         }
 
-        sender.sendMessage(ChatColor.RED + "Usage: /ysm config <status|source|speed|autosync|packetlog|modelscan|capture>");
+        sender.sendMessage(ChatColor.RED
+                + "Usage: /ysm config <status|source|speed|autosync|packetlog|modelscan|modeldir|capture>");
         return true;
     }
 
@@ -876,7 +902,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                 return List.of();
             }
             if (args.length == 2) {
-                return List.of("status", "source", "speed", "autosync", "packetlog", "modelscan", "capture").stream()
+                return List.of("status", "source", "speed", "autosync", "packetlog", "modelscan", "modeldir", "capture").stream()
                         .filter(value -> value.startsWith(args[1].toLowerCase(Locale.ROOT)))
                         .toList();
             }
@@ -1290,9 +1316,9 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         }
 
         Path root = modelRepository.root();
-        sender.sendMessage(ChatColor.AQUA + "PaperYSM models root: "
+        sender.sendMessage(ChatColor.AQUA + "PaperYSM animation model reference root: "
                 + (root == null ? "(not scanned)" : root.toAbsolutePath()));
-        sender.sendMessage(ChatColor.AQUA + "Loaded models: " + modelRepository.entries().size()
+        sender.sendMessage(ChatColor.AQUA + "Loaded reference models: " + modelRepository.entries().size()
                 + ", failed: " + modelRepository.failures().size());
         sender.sendMessage(ChatColor.AQUA + "Prepared distribution packages: "
                 + distributionRepository.prepared().size()

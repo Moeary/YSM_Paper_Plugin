@@ -4,8 +4,9 @@
 
 PaperYSM now talks directly to YSM 2.6 clients on `yes_steve_model:2_6_0`.
 The usable runtime path is intentionally conservative: a real Fabric/YSM or
-Freesia worker generates the native cache material, and PaperYSM replays that
-cache bundle to Paper clients.
+Freesia worker generates the native cache material, Velocity/Freesia emits the
+matching native type3/type5 stream, and PaperYSM replays that captured bundle to
+Paper clients.
 
 Implemented Java-layer packets:
 
@@ -49,7 +50,12 @@ Implemented native cache replay:
 - Player model selections are remembered in `player-models.yml` and restored
   after the next compatible handshake/cache replay.
 
-The current test fixture is `captures/native-cache/freesia-latest`. Once a client receives this cache stream, model download progress appears, server/cache-local model selection works, and wheel animations can be seen by other YSM clients.
+The current direct-Paper test fixture is
+`captures/native-cache/freesia-from-velocity`. It must be produced from a real
+Velocity/Freesia capture, not by pairing worker cache files by directory order.
+Once a client receives a complete captured cache stream, model download
+progress appears, server/cache-local model selection works, and wheel
+animations can be seen by other YSM clients.
 
 ## Current PaperYSM Flow
 
@@ -107,11 +113,11 @@ YSMParser clarified how V3 `.ysm` packages are structured after decrypt/decompre
 The Freesia-derived cache fixture taught the runtime part of the protocol: type4 requests contain token bytes, and `cache-map.tsv` links those tokens to concrete server cache files. PaperYSM can now use that mapping to send type5 chunks.
 
 `cache-map.tsv` paths are resolved relative to the native-cache fixture root,
-so `server-cache/<group>/<readable-name>.bin` works. `scripts\sync-worker-native-cache.bat`
-can reorganize the current fixture into nested folders and copy any worker
-`cache/server` files that match existing mapped cache bodies by SHA256. It does
-not invent map entries for unmatched worker files, because those files need the
-matching type3 token map before the client can request them.
+so `server-cache/<group>/<readable-name>.bin` works. The important invariant is
+that every row must come from the same real Freesia native type3/type5 capture:
+the token in type3, the `cache-map.tsv` row, and the server-cache body must all
+match. Worker cache files copied by filesystem order are not trustworthy enough
+for a client-visible fixture.
 
 PaperYSM now keeps mapped server-cache files disk-backed while replaying a
 native-cache fixture. It reads only the currently scheduled type5 chunk from
@@ -119,12 +125,36 @@ disk instead of loading every mapped cache body into a player session. The old
 single-file `server-cache.bin` fallback still exists for legacy captures, but
 large libraries should use `cache-map.tsv` entries.
 
-For bulk worker experiments, `scripts\export-worker-cache-batch.bat` is the
-safer path. Snapshot the worker's clean/default `cache/server` state first,
-then add one source folder such as `R18模型整合`, start the worker once, and run
-the export action. The script copies only cache files that appeared after the
-snapshot, names them from the source `.ysm` relative paths, and records `.ysm`
-SHA256 values to prevent duplicate model imports.
+For bulk imports, the supported path is capture-first:
+
+1. copy one model group into
+   `test-server/freesia-worker/config/yes_steve_model/custom/<group>`;
+2. start the full Velocity/Freesia stack;
+3. join through Velocity and let the real Freesia sync run;
+4. run `scripts\paperysm.bat export-capture` or
+   `scripts\sync-velocity-cache-to-paper.bat`;
+5. test the exported fixture in direct Paper with `/ysm sync`.
+
+For a full portable fixture, clear the client's YSM cache before joining the
+Velocity/Freesia stack. If the client already has entries, Freesia may skip
+their type5 bodies; the exporter will still write the real type3, but
+`export-report.tsv` will show missing cache rows.
+
+`scripts\export-worker-cache-batch.bat` remains as a research tool. Its direct
+export action is blocked unless `--unsafe-order-pair` is provided, because the
+previous order-pairing approach produced readable names but wrong cache bodies.
+
+`scripts\paperysm.bat` is the preferred local entrypoint for the usable
+workflow. It opens a Python menu for status checks, copying model groups into
+the Freesia worker, starting the Freesia stack, exporting real Velocity/Freesia
+captures, and inspecting type3.
+
+PaperYSM no longer relies on junctions to make external model collections show
+up under the YSM client browser. Copy model folders into the worker's real
+`config/yes_steve_model/custom/<group>` directory. The Paper `models-dir`
+setting is only an animation/model metadata reference; native cache replay can
+still sync models when that directory is empty, but custom wheel animation
+resolution may lose model-specific names.
 
 The Yes Steve Model technical report adds one important constraint for the
 generated path: packet type3 should establish the server/client cache key pair,
@@ -151,7 +181,7 @@ investigation and recommended next route.
 
 ## Remaining Work
 
-- Export or capture complete worker oracle bundles for arbitrary models:
+- Capture complete Velocity/Freesia oracle bundles for arbitrary model sets:
   type3 manifest/body, token map, and server-cache bodies.
 - Validate the generated `ysmcache` type3 manifest against a real client and
   adjust key, entry, metadata/group/icon fields until the client requests the

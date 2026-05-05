@@ -16,9 +16,18 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 21
 }
 
+sourceSets {
+    ysmSniffer {
+        java.srcDir("ysm-sniffer/src/main/java")
+        resources.srcDir("ysm-sniffer/src/main/resources")
+    }
+}
+
 dependencies {
     compileOnly "io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT"
     implementation "io.airlift:aircompressor:0.27"
+    ysmSnifferCompileOnly "com.velocitypowered:velocity-api:3.4.0-SNAPSHOT"
+    ysmSnifferCompileOnly files("test-server/velocity-proxy/plugins/packetevents-velocity-2.7.0.jar")
 }
 
 processResources {
@@ -102,6 +111,14 @@ tasks.register("analyzeNativeCacheFixture", JavaExec) {
             args(project.property("ysmNativeCacheLocalModel").toString())
         }
     }
+}
+
+tasks.register("ysmSnifferJar", Jar) {
+    dependsOn("ysmSnifferClasses")
+    archiveBaseName = "ysm-sniffer"
+    archiveVersion = "0.1.1"
+    destinationDirectory = layout.buildDirectory.dir("libs")
+    from(sourceSets.ysmSniffer.output)
 }
 
 tasks.register("exportFreesiaNativeFixture", JavaExec) {
