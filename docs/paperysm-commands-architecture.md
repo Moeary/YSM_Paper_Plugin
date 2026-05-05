@@ -2,55 +2,61 @@
 
 这份文档面向后续“给插件做减法”的判断：哪些命令应该成为管理员日常入口，哪些只是协议调研工具，哪些路径才是真正能让玩家用起来的产品主线。
 
-当前结论先放前面：PaperYSM 已经不是纯空壳。它能完成 YSM 2.6 客户端握手、发送授权模型列表、扫描本地 `.ysm`、重放 FreesiaII 捕获的 native cache，并在两个完成同步的 YSM 客户端之间广播模型状态和普通动画。但它仍然带着大量 reverse-engineering 期间留下的命令，真正产品化时应该把日常入口收敛到“状态、模型、同步、应用模型”这几条路径。
+当前结论先放前面：PaperYSM 已经收敛到“可用优先”的入口。日常命令改为 `/ysm`，普通玩家可以 `/ysm sync` 同步自己的默认 native cache；OP/管理员才可以指定玩家、`all`、cache source、发包速度和 debug。逆向阶段留下的 `/ysm dist ...`、`/ysm native selftest` 仍保留给研发排障，但不再是普通服主的主流程。
 
 ## 当前命令面
 
-`plugin.yml` 只注册了一个管理员命令：
+`plugin.yml` 注册的主命令是：
 
 ```text
-/paperysm <status|handshake|debug|models|dist|apply|native>
+/ysm <sync|status|models|diagnose>
 ```
 
-权限是 `paperysm.admin`，默认 OP 可用。实际命令分支都在 `PaperYsmPlugin.onCommand` 和 `handleDistributionCommand` 里。
+`/paperysm` 仍是别名。普通玩家默认可以执行 `/ysm sync`、查看自己的
+`status/diagnose`；`paperysm.admin`（默认 OP）才能指定目标玩家、`all`、
+切换 cache source、在线改配置、手动 apply 和使用研发命令。
 
 ### 日常/准日常命令
 
 | 命令 | 用途 | 参数 | 当前适用场景 |
 | --- | --- | --- | --- |
-| `/paperysm status` | 查看所有在线玩家的 YSM 会话状态 | 无 | 日常诊断。能看到是否兼容、最后包、auth、S2C/C2S raw 计数。 |
-| `/paperysm status <player>` | 查看单个玩家状态 | 玩家名 | 日常诊断。判断玩家有没有完成 51/52 握手。 |
-| `/paperysm models` | 查看模型仓库扫描结果 | 无 | 管理员确认 `plugins/PaperYSM/models` 是否有可用 `.ysm`。会列出前 8 个模型、失败数、准备好的分发包数。 |
-| `/paperysm models reload` | 重新扫描模型仓库，并按配置准备分发包 | 无 | 添加/替换 `.ysm` 后无需重启。产品化后应保留。 |
-| `/paperysm apply <player> <modelId> [textureId] [disabled]` | 主动给目标玩家应用模型状态，并广播给兼容 viewer | 玩家名、模型 id、纹理 id、是否 disabled | 调试和手工运维都可用。当前要求命令发起时模型必须在本地仓库中，除非模型是 `default`。 |
-| `/paperysm dist diagnose [player]` | 汇总分发包与玩家同步状态 | 可选玩家名 | 当前最有价值的排障命令。比 `dist status` 更接近“为什么玩家看不到模型”。 |
-| `/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]` | 从本地 `.ysm` 准备包生成实验 native cache，同步给玩家 | 玩家名、模型 id/all、发送间隔、chunk 大小、type3 布局、cache 明文 payload 形态 | 新的本地生成路径，不读取 Freesia `server-cache`。`legacy` 保留当前能触发 type4/type5 的布局；`keys` 用于验证 ServerCacheKey/ClientCacheKey 布局。`washed-zstd` 是旧实验形态；`headerless-v3`/`encrypted-v3` 用来验证服务端 cache 明文是否应接近去头的加密 `.ysm`。 |
-| `/paperysm dist nativecache <player> <captureName> [intervalTicks] [chunkBytes]` | 从 `captures/native-cache/<captureName>` 重放 Freesia 派生 native cache | 玩家名、捕获名、发送间隔、chunk 大小 | 当前让客户端出现同步进度条、选择服务器模型的工作路径。虽然依赖 fixture，但对本地测试很关键。 |
+| `/ysm sync` | 玩家给自己请求默认 native cache 同步 | 无 | 普通玩家可用。默认 source 来自 `sync.auto-native-cache-capture`。 |
+| `/ysm sync <player|all> [source]` | 管理员给指定玩家或全部玩家同步 cache | 玩家/all、可选 source | OP 运维入口，替代日常 `/ysm dist nativecache ...`。 |
+| `/ysm status` | 查看所有在线玩家的 YSM 会话状态 | 无 | 日常诊断。能看到是否兼容、最后包、auth、S2C/C2S raw 计数。 |
+| `/ysm status <player>` | 查看单个玩家状态 | 玩家名 | 日常诊断。判断玩家有没有完成 51/52 握手。 |
+| `/ysm models` | 查看模型仓库扫描结果 | 无 | 管理员确认 `plugins/PaperYSM/models` 是否有可用 `.ysm`。会列出前 8 个模型、失败数、准备好的分发包数。 |
+| `/ysm models reload` | 重新扫描模型仓库，并按配置准备分发包 | 无 | 添加/替换 `.ysm` 后无需重启。产品化后应保留。 |
+| `/ysm diagnose [player]` | 汇总玩家同步状态 | 可选玩家名 | 普通玩家看自己，管理员可看任意玩家。 |
+| `/ysm source <default|all|player> <source|clear>` | 切换默认或在线玩家 cache source | source 名 | 管理员入口。 |
+| `/ysm config speed <intervalTicks> <chunkBytes>` | 在线调整 type5 发包速度 | tick 间隔、chunk 大小 | 管理员入口，写回 config。 |
+| `/ysm debug <on|off>` | 在线开关 raw packet debug | on/off | 管理员入口，写回 config。 |
+| `/ysm apply <player> <modelId> [textureId] [disabled]` | 主动给目标玩家应用模型状态，并广播给兼容 viewer | 玩家名、模型 id、纹理 id、是否 disabled | 调试和手工运维都可用。当前要求命令发起时模型必须在本地仓库中，除非模型是 `default`。 |
 
 README 里推荐的主路径基本也是这一组：
 
 ```text
-/paperysm status
-/paperysm models
-/paperysm models reload
-/paperysm dist diagnose [player]
-/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]
-/paperysm dist nativecache <player> freesia-latest 1 59926
-/paperysm apply <player> <modelId> [textureId]
+/ysm status
+/ysm sync
+/ysm models
+/ysm models reload
+/ysm diagnose [player]
+/ysm source default freesia-latest
+/ysm config speed 1 59926
+/ysm apply <player> <modelId> [textureId]
 ```
 
 ### 运维/内部状态命令
 
 | 命令 | 用途 | 参数 | 当前适用场景 |
 | --- | --- | --- | --- |
-| `/paperysm handshake <player>` | 手动给玩家发送 YSM `id=51` 握手 | 玩家名 | 正常 join 后会自动握手。保留为排障入口即可，不应放在用户教程主流程。 |
-| `/paperysm debug` | 切换 `debug` 配置并保存 | 无 | 临时打开 raw subpacket 日志。产品化后更适合改成 `/paperysm debug on/off` 或只保留配置项。 |
-| `/paperysm dist status` | 查看准备好的分发包数量、chunk 数、体积、失败项 | 无 | 对开发/运维有用，但多数时候 `dist diagnose` 更直接。 |
-| `/paperysm dist prepare [modelId]` | 重新准备全部或单个模型的内部分发包 | 可选模型 id | 当 `distribution.prepare-on-reload` 关闭，或单模型准备失败后手动补救。 |
-| `/paperysm dist auth [player]` | 手动发送 Java 层 `id=6` 授权模型列表 | 可选玩家名 | 自动握手后通常会发送。保留为诊断工具即可。 |
-| `/paperysm dist clear` | 清空内存中的分发包和 native/replay 状态 | 无 | 研发/压测方便。产品化时需要谨慎，避免管理员误清空运行态。 |
-| `/paperysm native` | 显示当前 native bridge 实现名 | 无 | 内部实现状态。普通服主意义不大。 |
-| `/paperysm native selftest` | 运行 Java crypto/native raw 相关自测 | 无 | 开发者命令。更适合测试任务或 debug 命名空间。 |
+| `/ysm handshake <player>` | 手动给玩家发送 YSM `id=51` 握手 | 玩家名 | 正常 join 后会自动握手。保留为排障入口即可，不应放在用户教程主流程。 |
+| `/ysm debug` | 切换 `debug` 配置并保存 | 无 | 临时打开 raw subpacket 日志。产品化后更适合改成 `/ysm debug on/off` 或只保留配置项。 |
+| `/ysm dist status` | 查看准备好的分发包数量、chunk 数、体积、失败项 | 无 | 对开发/运维有用，但多数时候 `dist diagnose` 更直接。 |
+| `/ysm dist prepare [modelId]` | 重新准备全部或单个模型的内部分发包 | 可选模型 id | 当 `distribution.prepare-on-reload` 关闭，或单模型准备失败后手动补救。 |
+| `/ysm dist auth [player]` | 手动发送 Java 层 `id=6` 授权模型列表 | 可选玩家名 | 自动握手后通常会发送。保留为诊断工具即可。 |
+| `/ysm dist clear` | 清空内存中的分发包和 native/replay 状态 | 无 | 研发/压测方便。产品化时需要谨慎，避免管理员误清空运行态。 |
+| `/ysm native` | 显示当前 native bridge 实现名 | 无 | 内部实现状态。普通服主意义不大。 |
+| `/ysm native selftest` | 运行 Java crypto/native raw 相关自测 | 无 | 开发者命令。更适合测试任务或 debug 命名空间。 |
 
 ### 协议调研/实验命令
 
@@ -58,12 +64,12 @@ README 里推荐的主路径基本也是这一组：
 
 | 命令 | 用途 | 参数 | 当前定位 |
 | --- | --- | --- | --- |
-| `/paperysm dist replay <player> <captureNameOrFile> [fast|freesia|freesia-prelude]` | 从 `sync.raw-replay-dir` 重放旧 raw `id=1` 捕获 | 玩家、文件/目录、节奏模式 | 受 `sync.enable-raw-replay` 保护。用于比较 Freesia/original 捕获，不是正常分发路径。 |
-| `/paperysm dist bootstrap <player> [mode] [variant] [paddingBytes]` | 发送生成的 native type1 bootstrap 包 | 玩家、key 模式、变体、padding | 用来观察客户端是否回 C2S `id=2`。实验命令。 |
-| `/paperysm dist probe <player> [quick|full] [intervalTicks] [paddingBytes]` | 批量尝试 bootstrap 组合 | 玩家、profile、间隔、padding | 逆向阶段探测工具。 |
-| `/paperysm dist stream <player> [mode] [next|selected|initial]` | 尝试生成/发送 manifest stream | 玩家、模式、模型选择策略 | 旧的本地生成 stream 探针。 |
-| `/paperysm dist streamprobe <player> [intervalTicks]` | manifest stream 探测序列 | 玩家、间隔 | 旧探针。 |
-| `/paperysm dist report <player> [keys|keys-models|legacy] [s2c|c2s|both] [paddingBytes]` | 发送 report-native type1/type3，观察 type2/type4 解码 | 玩家、type3 布局、key 方向、padding | 用于验证 type3 布局猜想。 |
+| `/ysm dist replay <player> <captureNameOrFile> [fast|freesia|freesia-prelude]` | 从 `sync.raw-replay-dir` 重放旧 raw `id=1` 捕获 | 玩家、文件/目录、节奏模式 | 受 `sync.enable-raw-replay` 保护。用于比较 Freesia/original 捕获，不是正常分发路径。 |
+| `/ysm dist bootstrap <player> [mode] [variant] [paddingBytes]` | 发送生成的 native type1 bootstrap 包 | 玩家、key 模式、变体、padding | 用来观察客户端是否回 C2S `id=2`。实验命令。 |
+| `/ysm dist probe <player> [quick|full] [intervalTicks] [paddingBytes]` | 批量尝试 bootstrap 组合 | 玩家、profile、间隔、padding | 逆向阶段探测工具。 |
+| `/ysm dist stream <player> [mode] [next|selected|initial]` | 尝试生成/发送 manifest stream | 玩家、模式、模型选择策略 | 旧的本地生成 stream 探针。 |
+| `/ysm dist streamprobe <player> [intervalTicks]` | manifest stream 探测序列 | 玩家、间隔 | 旧探针。 |
+| `/ysm dist report <player> [keys|keys-models|legacy] [s2c|c2s|both] [paddingBytes]` | 发送 report-native type1/type3，观察 type2/type4 解码 | 玩家、type3 布局、key 方向、padding | 用于验证 type3 布局猜想。 |
 
 ## 配置入口
 
@@ -93,7 +99,7 @@ README 里推荐的主路径基本也是这一组：
 3. 扫描模型仓库 `YsmModelRepository`。
 4. 如果 `distribution.prepare-on-reload: true`，把扫描成功的 V3 `.ysm` 准备成 `YsmDistributionRepository.PreparedModel`。
 5. 注册 YSM plugin message channel：默认 `yes_steve_model:2_6_0`。
-6. 注册 join/quit 事件、`/paperysm` 命令、tab complete。
+6. 注册 join/quit 事件、`/ysm` 命令、tab complete。
 
 ### 2. 握手与会话
 
@@ -120,7 +126,7 @@ README 里推荐的主路径基本也是这一组：
 - 成功项保存版本、format、源文件大小、解压大小、payload summary、extra animation profile。
 - 失败项保存文件和异常信息。
 
-这条路径已经适合产品化保留：管理员只需要把模型放进目录，然后 `/paperysm models reload`。
+这条路径已经适合产品化保留：管理员只需要把模型放进目录，然后 `/ysm models reload`。
 
 ### 4. 分发准备
 
@@ -139,7 +145,7 @@ README 里推荐的主路径基本也是这一组：
 当前最接近“能用”的同步路径是：
 
 ```text
-/paperysm dist nativecache <player> freesia-latest 1 59926
+/ysm dist nativecache <player> freesia-latest 1 59926
 ```
 
 它从插件数据目录下读取：
@@ -168,7 +174,7 @@ captures/native-cache/<captureName>/
 
 模型状态有两种来源：
 
-- 管理员命令 `/paperysm apply <player> <modelId> [textureId] [disabled]`。
+- 管理员命令 `/ysm apply <player> <modelId> [textureId] [disabled]`。
 - 客户端发来的 `id=5` model selection。
 
 应用时插件会：
@@ -215,13 +221,13 @@ captures/native-cache/<captureName>/
 
 围绕这条主线，建议保留或改名成更直观的命令：
 
-- `/paperysm status [player]`
-- `/paperysm models [reload]`
-- `/paperysm sync <player>`：包装当前 `dist nativecache`，以后替换成本地生成 native cache。
-- `/paperysm diagnose [player]`：包装当前 `dist diagnose`。
-- `/paperysm apply <player> <modelId> [textureId] [disabled]`
+- `/ysm status [player]`
+- `/ysm models [reload]`
+- `/ysm sync <player>`：包装当前 `dist nativecache`，以后替换成本地生成 native cache。
+- `/ysm diagnose [player]`：包装当前 `dist diagnose`。
+- `/ysm apply <player> <modelId> [textureId] [disabled]`
 
-其中 `/paperysm sync` 可以先内部调用 native-cache fixture，并在文案里明确 source；等本地生成器完成后，命令名无需改变。
+其中 `/ysm sync` 可以先内部调用 native-cache fixture，并在文案里明确 source；等本地生成器完成后，命令名无需改变。
 
 ## 建议隐藏或移入 debug 的命令
 
@@ -239,12 +245,12 @@ captures/native-cache/<captureName>/
 它们可以迁移为：
 
 ```text
-/paperysm debug replay ...
-/paperysm debug bootstrap ...
-/paperysm debug probe ...
-/paperysm debug report ...
-/paperysm debug native selftest
-/paperysm debug clear-runtime
+/ysm debug replay ...
+/ysm debug bootstrap ...
+/ysm debug probe ...
+/ysm debug report ...
+/ysm debug native selftest
+/ysm debug clear-runtime
 ```
 
 或者保留现有命令但需要额外配置开关，例如 `debug.enable-research-commands: true` 才出现在 tab complete 中。这样不会误伤研发能力，也能让插件对普通管理员显得更像产品，而不是协议实验台。
@@ -255,9 +261,9 @@ captures/native-cache/<captureName>/
 
 目标不是立刻消灭 Freesia fixture，而是让当前已验证路径少敲命令、少踩坑：
 
-- 新增或包装 `/paperysm sync <player>`，默认使用 `sync.auto-native-cache-capture`。
+- 新增或包装 `/ysm sync <player>`，默认使用 `sync.auto-native-cache-capture`。
 - 允许配置 `sync.auto-native-cache-on-handshake: true` 时自动跑当前 native-cache replay。
-- `diagnose` 明确告诉管理员下一步应该执行什么，例如“已握手但 native cache 未开始，请运行 /paperysm sync <player>”。
+- `diagnose` 明确告诉管理员下一步应该执行什么，例如“已握手但 native cache 未开始，请运行 /ysm sync <player>”。
 
 ### P1：收敛帮助和 tab complete
 
@@ -288,7 +294,7 @@ captures/native-cache/<captureName>/
 
 - `NativeCacheSyncService`
 - 当前实现：`FixtureNativeCacheSyncService`
-- 实验实现：`GeneratedNativeCacheSyncService`，当前入口是 `/paperysm dist ysmcache ...`
+- 实验实现：`GeneratedNativeCacheSyncService`，当前入口是 `/ysm dist ysmcache ...`
 
 命令和配置只表达“给玩家同步模型缓存”，不要让管理员感知 type1/type3/type5。
 
@@ -320,9 +326,9 @@ captures/native-cache/<captureName>/
 理想的服主路径应该是：
 
 1. 把 `.ysm` 放进 `plugins/PaperYSM/models`。
-2. 执行 `/paperysm models reload`。
+2. 执行 `/ysm models reload`。
 3. 玩家进服，插件自动握手并同步。
-4. 如果没生效，执行 `/paperysm diagnose <player>`。
-5. 管理员最多手动执行 `/paperysm sync <player>` 或 `/paperysm apply ...`。
+4. 如果没生效，执行 `/ysm diagnose <player>`。
+5. 管理员最多手动执行 `/ysm sync <player>` 或 `/ysm apply ...`。
 
 其它命令都应该服务开发者，而不是成为普通使用说明的一部分。

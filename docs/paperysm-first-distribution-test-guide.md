@@ -58,7 +58,7 @@ build/libs/paper-ysm-0.1.0-SNAPSHOT.jar
 test-server/direct-paper
 ```
 
-注意：只有 OP 或拥有 `paperysm.admin` 权限的管理员可以使用 `/paperysm` 命令。
+注意：只有 OP 或拥有 `paperysm.admin` 权限的管理员可以使用 `/ysm` 命令。
 
 ### 2. 放置模型
 
@@ -97,13 +97,13 @@ test-server/direct-paper/plugins/PaperYSM/models/拉菲Ⅱ/拉菲Ⅱ_v1.2.ysm
 添加或替换模型后执行：
 
 ```text
-/paperysm models reload
+/ysm models reload
 ```
 
 再用下面命令确认扫描结果：
 
 ```text
-/paperysm models
+/ysm models
 ```
 
 ### 3. 确认 native-cache 测试素材存在
@@ -126,7 +126,7 @@ plugins/PaperYSM/captures/native-cache/freesia-latest
 test-server/direct-paper/plugins/PaperYSM/captures/native-cache/freesia-latest
 ```
 
-如果你把插件拿到新的测试服，需要同时带上这份测试素材。否则 `/paperysm dist nativecache ...` 会提示找不到或加载失败。
+如果你把插件拿到新的测试服，需要同时带上这份测试素材。否则 `/ysm dist nativecache ...` 会提示找不到或加载失败。
 
 ## 推荐手动测试流程
 
@@ -135,8 +135,8 @@ test-server/direct-paper/plugins/PaperYSM/captures/native-cache/freesia-latest
 ### 1. 启动服务器并扫描模型
 
 ```text
-/paperysm models reload
-/paperysm models
+/ysm models reload
+/ysm models
 ```
 
 期望结果：
@@ -150,7 +150,7 @@ test-server/direct-paper/plugins/PaperYSM/captures/native-cache/freesia-latest
 玩家进入服务器后，执行：
 
 ```text
-/paperysm status <player>
+/ysm status <player>
 ```
 
 期望结果：
@@ -165,7 +165,7 @@ test-server/direct-paper/plugins/PaperYSM/captures/native-cache/freesia-latest
 执行：
 
 ```text
-/paperysm dist nativecache <player> freesia-latest 1 59926
+/ysm dist nativecache <player> freesia-latest 1 59926
 ```
 
 参数含义：
@@ -188,13 +188,13 @@ test-server/direct-paper/plugins/PaperYSM/captures/native-cache/freesia-latest
 如果想由管理员手动套用模型状态，可以执行：
 
 ```text
-/paperysm apply <player> <modelId> [textureId]
+/ysm apply <player> <modelId> [textureId]
 ```
 
 例如：
 
 ```text
-/paperysm apply Steve alice/robot
+/ysm apply Steve alice/robot
 ```
 
 `textureId` 不填时默认使用 `default`。
@@ -234,40 +234,40 @@ sync:
 ## 常用管理员命令
 
 ```text
-/paperysm status
-/paperysm status <player>
-/paperysm models
-/paperysm models reload
-/paperysm dist diagnose [player]
-/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]
-/paperysm dist nativecache <player> freesia-latest 1 59926
-/paperysm apply <player> <modelId> [textureId]
+/ysm status
+/ysm status <player>
+/ysm models
+/ysm models reload
+/ysm dist diagnose [player]
+/ysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]
+/ysm dist nativecache <player> freesia-latest 1 59926
+/ysm apply <player> <modelId> [textureId]
 ```
 
 命令说明：
 
 | 命令 | 用途 |
 | --- | --- |
-| `/paperysm status` | 查看在线玩家的 YSM 会话状态。 |
-| `/paperysm status <player>` | 查看单个玩家是否完成兼容握手。 |
-| `/paperysm models` | 查看模型仓库扫描结果和准备好的分发包数量。 |
-| `/paperysm models reload` | 添加或替换 `.ysm` 后重新扫描模型。 |
-| `/paperysm dist diagnose [player]` | 汇总模型分发包、玩家握手、native-cache 同步状态。 |
-| `/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]` | 实验性本地 `.ysm` 生成 native cache，不读取 Freesia cache 文件。`legacy` 是当前能到 type4/type5 的布局，`keys` 专门验证双 cache key 布局；payload 参数用于对比旧 `washed-zstd` 和去 YSGP 头的加密 `.ysm` 形态。 |
-| `/paperysm dist nativecache <player> freesia-latest 1 59926` | 给玩家启动当前可用的 native-cache fixture 同步。 |
-| `/paperysm apply <player> <modelId> [textureId]` | 管理员手动给玩家套用模型状态并广播。 |
+| `/ysm status` | 查看在线玩家的 YSM 会话状态。 |
+| `/ysm status <player>` | 查看单个玩家是否完成兼容握手。 |
+| `/ysm models` | 查看模型仓库扫描结果和准备好的分发包数量。 |
+| `/ysm models reload` | 添加或替换 `.ysm` 后重新扫描模型。 |
+| `/ysm dist diagnose [player]` | 汇总模型分发包、玩家握手、native-cache 同步状态。 |
+| `/ysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]` | 实验性本地 `.ysm` 生成 native cache，不读取 Freesia cache 文件。`legacy` 是当前能到 type4/type5 的布局，`keys` 专门验证双 cache key 布局；payload 参数用于对比旧 `washed-zstd` 和去 YSGP 头的加密 `.ysm` 形态。 |
+| `/ysm dist nativecache <player> freesia-latest 1 59926` | 给玩家启动当前可用的 native-cache fixture 同步。 |
+| `/ysm apply <player> <modelId> [textureId]` | 管理员手动给玩家套用模型状态并广播。 |
 
 其他 `dist replay/bootstrap/probe/stream/report` 相关命令是协议调研入口，不建议放进普通测试流程。
 
 ## 排障速查
 
-### `/paperysm models` 没有模型
+### `/ysm models` 没有模型
 
 检查：
 
 - `.ysm` 是否放在 `plugins/PaperYSM/models` 下。
 - 文件后缀是否是 `.ysm`。
-- 添加文件后是否执行了 `/paperysm models reload`。
+- 添加文件后是否执行了 `/ysm models reload`。
 - 控制台是否有模型解析失败信息。
 
 ### 玩家状态不是 compatible
@@ -286,7 +286,7 @@ sync:
 执行：
 
 ```text
-/paperysm dist nativecache <player> freesia-latest 1 59926
+/ysm dist nativecache <player> freesia-latest 1 59926
 ```
 
 或者在手动流程确认可用后，打开 `sync.auto-native-cache-on-handshake`。
@@ -320,7 +320,7 @@ plugins/PaperYSM/captures/native-cache/freesia-latest
 - 观察者是否完成 compatible 握手。
 - 观察者是否也完成 native-cache 同步。
 - 被观察者是否真的在 YSM 界面选择了服务器模型。
-- 必要时执行 `/paperysm dist diagnose <player>` 分别查看两名玩家。
+- 必要时执行 `/ysm dist diagnose <player>` 分别查看两名玩家。
 
 ### 轮盘或自定义动画不对
 
@@ -330,9 +330,9 @@ plugins/PaperYSM/captures/native-cache/freesia-latest
 
 一轮最小测试可以按下面标准判断通过：
 
-- `/paperysm models` 能扫到测试模型。
-- 玩家 `/paperysm status <player>` 显示 compatible。
-- `/paperysm dist nativecache <player> freesia-latest 1 59926` 能启动。
+- `/ysm models` 能扫到测试模型。
+- 玩家 `/ysm status <player>` 显示 compatible。
+- `/ysm dist nativecache <player> freesia-latest 1 59926` 能启动。
 - 玩家客户端出现并完成 YSM 同步进度。
 - 玩家能在 YSM 界面选择服务器模型。
 - 两个都完成同步的 YSM 玩家能互相看到模型状态。

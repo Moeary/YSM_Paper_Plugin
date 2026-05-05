@@ -5,11 +5,14 @@ api-version: '1.21'
 author: YSMParser contributors
 description: Paper-side Yes Steve Model protocol bridge prototype.
 commands:
-  paperysm:
-    description: Inspect and drive the PaperYSM bridge.
-    usage: /paperysm <status|handshake|debug|models|dist|apply|native>
-    permission: paperysm.admin
+  ysm:
+    description: Sync and manage YSM model cache distribution.
+    usage: /ysm <sync|status|models|diagnose>
+    aliases: [paperysm]
 permissions:
+  paperysm.use:
+    description: Allows players to request their own YSM cache sync.
+    default: true
   paperysm.admin:
     description: Allows PaperYSM administrative commands.
     default: op

@@ -14,8 +14,11 @@ import com.ysm.paper.nativebridge.sync.YsmNativeSyncPrototype;
 import com.ysm.paper.session.YsmClientSession;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -103,6 +106,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
     private final Map<UUID, NativeSyncState> nativeSyncStates = new ConcurrentHashMap<>();
     private final Map<UUID, ReportNativeSession> reportNativeSessions = new ConcurrentHashMap<>();
     private final Map<UUID, NativeCacheReplaySession> nativeCacheReplaySessions = new ConcurrentHashMap<>();
+    private final Map<UUID, String> playerNativeCacheSources = new ConcurrentHashMap<>();
     private final Map<UUID, CopyOnWriteArrayList<YsmNativeSyncPrototype.KeyCandidate>> nativeRecentDecodeKeys =
             new ConcurrentHashMap<>();
 
@@ -161,7 +165,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         Bukkit.getMessenger().registerIncomingPluginChannel(this, channel, this);
         Bukkit.getPluginManager().registerEvents(this, this);
 
-        var command = getCommand("paperysm");
+        var command = getCommand("ysm");
         if (command != null) {
             command.setExecutor(this);
             command.setTabCompleter(this);
@@ -202,6 +206,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         nativeSyncStates.clear();
         reportNativeSessions.clear();
         nativeCacheReplaySessions.clear();
+        playerNativeCacheSources.clear();
         nativeRecentDecodeKeys.clear();
     }
 
@@ -220,6 +225,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         nativeSyncStates.remove(event.getPlayer().getUniqueId());
         reportNativeSessions.remove(event.getPlayer().getUniqueId());
         nativeCacheReplaySessions.remove(event.getPlayer().getUniqueId());
+        playerNativeCacheSources.remove(event.getPlayer().getUniqueId());
         nativeRecentDecodeKeys.remove(event.getPlayer().getUniqueId());
     }
 
@@ -344,27 +350,51 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             @NotNull Command command,
             @NotNull String label,
             String @NotNull [] args) {
-        if (args.length == 0 || "status".equalsIgnoreCase(args[0])) {
-            if (args.length >= 2) {
-                Player player = Bukkit.getPlayerExact(args[1]);
-                if (player == null) {
-                    sender.sendMessage(ChatColor.RED + "Player not found: " + args[1]);
-                    return true;
-                }
-                sendStatus(sender, player);
-                return true;
-            }
+        String action = args.length == 0 ? "status" : args[0].toLowerCase(Locale.ROOT);
 
-            sender.sendMessage(ChatColor.AQUA + "PaperYSM sessions: " + sessions.size());
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                sendStatus(sender, player);
-            }
-            return true;
+        if ("status".equals(action)) {
+            return handleStatusCommand(sender, args);
         }
 
-        if ("handshake".equalsIgnoreCase(args[0])) {
+        if ("sync".equals(action)) {
+            return handleSyncCommand(sender, args);
+        }
+
+        if ("diagnose".equals(action) || "diag".equals(action)) {
+            return handleDiagnoseCommand(sender, args);
+        }
+
+        if ("models".equals(action)) {
+            return handleModelsCommand(sender, args);
+        }
+
+        if ("source".equals(action)) {
+            if (!requireAdmin(sender, "/ysm source")) {
+                return true;
+            }
+            return handleSourceCommand(sender, args);
+        }
+
+        if ("config".equals(action)) {
+            if (!requireAdmin(sender, "/ysm config")) {
+                return true;
+            }
+            return handleConfigCommand(sender, args);
+        }
+
+        if ("debug".equals(action)) {
+            if (!requireAdmin(sender, "/ysm debug")) {
+                return true;
+            }
+            return handleDebugCommand(sender, args);
+        }
+
+        if ("handshake".equals(action)) {
+            if (!requireAdmin(sender, "/ysm handshake")) {
+                return true;
+            }
             if (args.length < 2) {
-                sender.sendMessage(ChatColor.RED + "Usage: /paperysm handshake <player>");
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm handshake <player>");
                 return true;
             }
             Player player = Bukkit.getPlayerExact(args[1]);
@@ -377,23 +407,17 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             return true;
         }
 
-        if ("debug".equalsIgnoreCase(args[0])) {
-            debug = !debug;
-            getConfig().set("debug", debug);
-            saveConfig();
-            sender.sendMessage(ChatColor.GREEN + "PaperYSM debug is now " + debug + ".");
-            return true;
-        }
-
-        if ("models".equalsIgnoreCase(args[0])) {
-            return handleModelsCommand(sender, args);
-        }
-
-        if ("apply".equalsIgnoreCase(args[0])) {
+        if ("apply".equals(action)) {
+            if (!requireAdmin(sender, "/ysm apply")) {
+                return true;
+            }
             return handleApplyCommand(sender, args);
         }
 
-        if ("dist".equalsIgnoreCase(args[0]) || "distribution".equalsIgnoreCase(args[0])) {
+        if ("dist".equals(action) || "distribution".equals(action)) {
+            if (!requireAdmin(sender, "/ysm dist")) {
+                return true;
+            }
             try {
                 return handleDistributionCommand(sender, args);
             } catch (RuntimeException ex) {
@@ -405,7 +429,10 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             }
         }
 
-        if ("native".equalsIgnoreCase(args[0])) {
+        if ("native".equals(action)) {
+            if (!requireAdmin(sender, "/ysm native")) {
+                return true;
+            }
             if (args.length >= 2 && "selftest".equalsIgnoreCase(args[1])) {
                 YsmCryptoSelfTest.Result result = YsmCryptoSelfTest.run();
                 sender.sendMessage((result.success() ? ChatColor.GREEN : ChatColor.RED)
@@ -417,8 +444,364 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             return true;
         }
 
-        sender.sendMessage(ChatColor.RED + "Usage: /paperysm <status|handshake|debug|models|dist|apply|native>");
+        sendMainUsage(sender);
         return true;
+    }
+
+    private boolean handleStatusCommand(CommandSender sender, String[] args) {
+        if (args.length >= 2) {
+            Player player = Bukkit.getPlayerExact(args[1]);
+            if (player == null) {
+                sender.sendMessage(ChatColor.RED + "Player not found: " + args[1]);
+                return true;
+            }
+            if (!canInspectPlayer(sender, player)) {
+                sender.sendMessage(ChatColor.RED + "普通玩家只能查看自己的 YSM 状态。");
+                return true;
+            }
+            sendStatus(sender, player);
+            sendNativeCacheReplayStatus(sender, player);
+            return true;
+        }
+
+        if (sender instanceof Player player && !isAdmin(sender)) {
+            sendStatus(sender, player);
+            sendNativeCacheReplayStatus(sender, player);
+            sender.sendMessage(ChatColor.GRAY + "Use /ysm sync to request model cache sync.");
+            return true;
+        }
+
+        sender.sendMessage(ChatColor.AQUA + "PaperYSM sessions: " + sessions.size()
+                + ", default cache source=" + nativeCacheDefaultSource()
+                + ", autosync=" + autoNativeCacheOnHandshake
+                + ", speed=" + autoNativeCacheIntervalTicks + "t/" + autoNativeCacheChunkBytes + "b.");
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            sendStatus(sender, player);
+            sendNativeCacheReplayStatus(sender, player);
+        }
+        return true;
+    }
+
+    private boolean handleSyncCommand(CommandSender sender, String[] args) {
+        if (args.length == 1) {
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm sync <player|all> [cacheSource]");
+                return true;
+            }
+            startNativeCacheReplay(
+                    sender,
+                    player,
+                    nativeCacheSourceFor(player),
+                    autoNativeCacheIntervalTicks,
+                    autoNativeCacheChunkBytes);
+            return true;
+        }
+
+        if (!requireAdmin(sender, "/ysm sync <player|all> [cacheSource]")) {
+            return true;
+        }
+
+        String targetName = args[1];
+        String source = args.length >= 3 ? args[2].trim() : "";
+        if ("all".equalsIgnoreCase(targetName) || "*".equals(targetName)) {
+            if (!source.isEmpty()) {
+                setDefaultNativeCacheSource(source, true);
+                playerNativeCacheSources.clear();
+            }
+            int started = 0;
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                startNativeCacheReplay(
+                        sender,
+                        player,
+                        nativeCacheSourceFor(player),
+                        autoNativeCacheIntervalTicks,
+                        autoNativeCacheChunkBytes);
+                started++;
+            }
+            sender.sendMessage(ChatColor.GREEN + "Requested YSM native cache sync for "
+                    + started + " online player(s).");
+            return true;
+        }
+
+        Player player = Bukkit.getPlayerExact(targetName);
+        if (player == null) {
+            sender.sendMessage(ChatColor.RED + "Player not found: " + targetName);
+            return true;
+        }
+        if (!source.isEmpty()) {
+            playerNativeCacheSources.put(player.getUniqueId(), source);
+            sender.sendMessage(ChatColor.GREEN + "Set " + player.getName()
+                    + " cache source to " + source + " for this session.");
+        }
+        startNativeCacheReplay(
+                sender,
+                player,
+                nativeCacheSourceFor(player),
+                autoNativeCacheIntervalTicks,
+                autoNativeCacheChunkBytes);
+        return true;
+    }
+
+    private boolean handleDiagnoseCommand(CommandSender sender, String[] args) {
+        if (args.length >= 2) {
+            Player player = Bukkit.getPlayerExact(args[1]);
+            if (player == null) {
+                sender.sendMessage(ChatColor.RED + "Player not found: " + args[1]);
+                return true;
+            }
+            if (!canInspectPlayer(sender, player)) {
+                sender.sendMessage(ChatColor.RED + "普通玩家只能诊断自己的 YSM 同步状态。");
+                return true;
+            }
+            sendDistributionDiagnostics(sender, player.getName());
+            return true;
+        }
+
+        if (sender instanceof Player player && !isAdmin(sender)) {
+            sendDistributionDiagnostics(sender, player.getName());
+            return true;
+        }
+        sendDistributionDiagnostics(sender, null);
+        return true;
+    }
+
+    private boolean handleSourceCommand(CommandSender sender, String[] args) {
+        if (args.length == 1) {
+            sender.sendMessage(ChatColor.AQUA + "Default YSM cache source: " + nativeCacheDefaultSource());
+            if (playerNativeCacheSources.isEmpty()) {
+                sender.sendMessage(ChatColor.GRAY + "No online player cache source overrides.");
+            } else {
+                for (Player player : Bukkit.getOnlinePlayers()) {
+                    String override = playerNativeCacheSources.get(player.getUniqueId());
+                    if (override != null) {
+                        sender.sendMessage(ChatColor.GRAY + "- " + player.getName() + ": " + override);
+                    }
+                }
+            }
+            sender.sendMessage(ChatColor.GRAY + "Usage: /ysm source <default|all|player> <cacheSource|clear>");
+            return true;
+        }
+
+        if (args.length < 3) {
+            sender.sendMessage(ChatColor.RED + "Usage: /ysm source <default|all|player> <cacheSource|clear>");
+            return true;
+        }
+
+        String target = args[1];
+        String source = args[2].trim();
+        if (source.isEmpty()) {
+            sender.sendMessage(ChatColor.RED + "Cache source cannot be empty.");
+            return true;
+        }
+
+        if ("default".equalsIgnoreCase(target) || "all".equalsIgnoreCase(target) || "*".equals(target)) {
+            if ("clear".equalsIgnoreCase(source)) {
+                source = "freesia-latest";
+            }
+            setDefaultNativeCacheSource(source, true);
+            if ("all".equalsIgnoreCase(target) || "*".equals(target)) {
+                playerNativeCacheSources.clear();
+            }
+            sender.sendMessage(ChatColor.GREEN + "Default YSM cache source is now " + source + ".");
+            return true;
+        }
+
+        Player player = Bukkit.getPlayerExact(target);
+        if (player == null) {
+            sender.sendMessage(ChatColor.RED + "Player not found: " + target);
+            return true;
+        }
+        if ("clear".equalsIgnoreCase(source)) {
+            playerNativeCacheSources.remove(player.getUniqueId());
+            sender.sendMessage(ChatColor.GREEN + "Cleared " + player.getName()
+                    + " cache source override; current source=" + nativeCacheSourceFor(player) + ".");
+            return true;
+        }
+        playerNativeCacheSources.put(player.getUniqueId(), source);
+        sender.sendMessage(ChatColor.GREEN + "Set " + player.getName()
+                + " cache source to " + source + ".");
+        return true;
+    }
+
+    private boolean handleConfigCommand(CommandSender sender, String[] args) {
+        String key = args.length >= 2 ? args[1].toLowerCase(Locale.ROOT) : "status";
+        if ("status".equals(key)) {
+            sender.sendMessage(ChatColor.AQUA + "YSM cache source: " + nativeCacheDefaultSource());
+            sender.sendMessage(ChatColor.AQUA + "YSM autosync: " + autoNativeCacheOnHandshake
+                    + ", delay=" + autoNativeCacheDelayTicks
+                    + "t, speed=" + autoNativeCacheIntervalTicks + "t/"
+                    + autoNativeCacheChunkBytes + "b.");
+            sender.sendMessage(ChatColor.AQUA + "YSM debug: raw=" + debug
+                    + ", packetLog=" + logPacketDetails
+                    + ", modelScanLog=" + logModelScanDetails
+                    + ", captureClientRaw=" + captureClientRawPackets + ".");
+            sender.sendMessage(ChatColor.GRAY + "Usage: /ysm config <source|speed|autosync|packetlog|modelscan|capture> ...");
+            return true;
+        }
+        if ("source".equals(key)) {
+            if (args.length < 3) {
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm config source <cacheSource>");
+                return true;
+            }
+            setDefaultNativeCacheSource(args[2], true);
+            playerNativeCacheSources.clear();
+            sender.sendMessage(ChatColor.GREEN + "Default YSM cache source is now " + nativeCacheDefaultSource() + ".");
+            return true;
+        }
+        if ("speed".equals(key)) {
+            if (args.length < 4) {
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm config speed <intervalTicks> <chunkBytes>");
+                return true;
+            }
+            autoNativeCacheIntervalTicks = parsePositiveInt(args[2], autoNativeCacheIntervalTicks);
+            autoNativeCacheChunkBytes = parsePositiveInt(args[3], autoNativeCacheChunkBytes);
+            getConfig().set("sync.auto-native-cache-interval-ticks", autoNativeCacheIntervalTicks);
+            getConfig().set("sync.auto-native-cache-chunk-bytes", autoNativeCacheChunkBytes);
+            saveConfig();
+            sender.sendMessage(ChatColor.GREEN + "YSM native cache speed is now interval="
+                    + autoNativeCacheIntervalTicks + " tick(s), chunkBytes=" + autoNativeCacheChunkBytes + ".");
+            return true;
+        }
+        if ("autosync".equals(key)) {
+            Boolean value = parseToggle(sender, args, 2, "autosync");
+            if (value == null) {
+                return true;
+            }
+            autoNativeCacheOnHandshake = value;
+            getConfig().set("sync.auto-native-cache-on-handshake", autoNativeCacheOnHandshake);
+            saveConfig();
+            sender.sendMessage(ChatColor.GREEN + "YSM auto native cache sync is now " + autoNativeCacheOnHandshake + ".");
+            return true;
+        }
+        if ("packetlog".equals(key)) {
+            Boolean value = parseToggle(sender, args, 2, "packetlog");
+            if (value == null) {
+                return true;
+            }
+            logPacketDetails = value;
+            getConfig().set("logging.packet-details", logPacketDetails);
+            saveConfig();
+            sender.sendMessage(ChatColor.GREEN + "YSM packet detail logging is now " + logPacketDetails + ".");
+            return true;
+        }
+        if ("modelscan".equals(key)) {
+            Boolean value = parseToggle(sender, args, 2, "modelscan");
+            if (value == null) {
+                return true;
+            }
+            logModelScanDetails = value;
+            getConfig().set("logging.model-scan-details", logModelScanDetails);
+            saveConfig();
+            sender.sendMessage(ChatColor.GREEN + "YSM model scan detail logging is now " + logModelScanDetails + ".");
+            return true;
+        }
+        if ("capture".equals(key)) {
+            Boolean value = parseToggle(sender, args, 2, "capture");
+            if (value == null) {
+                return true;
+            }
+            captureClientRawPackets = value;
+            getConfig().set("capture.client-raw-packets", captureClientRawPackets);
+            saveConfig();
+            sender.sendMessage(ChatColor.GREEN + "YSM client raw packet capture is now " + captureClientRawPackets + ".");
+            return true;
+        }
+
+        sender.sendMessage(ChatColor.RED + "Usage: /ysm config <status|source|speed|autosync|packetlog|modelscan|capture>");
+        return true;
+    }
+
+    private boolean handleDebugCommand(CommandSender sender, String[] args) {
+        if (args.length == 1 || "status".equalsIgnoreCase(args[1])) {
+            sender.sendMessage(ChatColor.AQUA + "PaperYSM debug raw packet logging: " + debug);
+            sender.sendMessage(ChatColor.GRAY + "Usage: /ysm debug <on|off>");
+            return true;
+        }
+        Boolean value = parseToggle(sender, args, 1, "debug");
+        if (value == null) {
+            return true;
+        }
+        debug = value;
+        getConfig().set("debug", debug);
+        saveConfig();
+        sender.sendMessage(ChatColor.GREEN + "PaperYSM debug raw packet logging is now " + debug + ".");
+        return true;
+    }
+
+    private void sendMainUsage(CommandSender sender) {
+        sender.sendMessage(ChatColor.RED + "Usage: /ysm <sync|status|models|diagnose>");
+        if (isAdmin(sender)) {
+            sender.sendMessage(ChatColor.GRAY + "Admin: /ysm <source|config|debug|apply|handshake|dist|native>");
+        }
+    }
+
+    private boolean canInspectPlayer(CommandSender sender, Player player) {
+        return isAdmin(sender)
+                || (sender instanceof Player self && self.getUniqueId().equals(player.getUniqueId()));
+    }
+
+    private boolean isAdmin(CommandSender sender) {
+        return !(sender instanceof Player) || sender.hasPermission("paperysm.admin") || sender.isOp();
+    }
+
+    private boolean requireAdmin(CommandSender sender, String usage) {
+        if (isAdmin(sender)) {
+            return true;
+        }
+        sender.sendMessage(ChatColor.RED + "Only OP/admin can use " + usage + ".");
+        return false;
+    }
+
+    private String nativeCacheDefaultSource() {
+        return autoNativeCacheCaptureName == null || autoNativeCacheCaptureName.isBlank()
+                ? "freesia-latest"
+                : autoNativeCacheCaptureName.trim();
+    }
+
+    private void setDefaultNativeCacheSource(String source, boolean persist) {
+        autoNativeCacheCaptureName = source == null || source.isBlank() ? "freesia-latest" : source.trim();
+        if (persist) {
+            getConfig().set("sync.auto-native-cache-capture", autoNativeCacheCaptureName);
+            saveConfig();
+        }
+    }
+
+    private List<String> nativeCacheSourceSuggestions(String prefix) {
+        String normalizedPrefix = prefix.toLowerCase(Locale.ROOT);
+        Path root = getDataFolder().toPath().resolve(NATIVE_CACHE_REPLAY_ROOT);
+        List<String> sources = new ArrayList<>(List.of(nativeCacheDefaultSource(), "freesia-latest"));
+        if (Files.isDirectory(root)) {
+            try {
+                Files.list(root)
+                        .filter(Files::isDirectory)
+                        .map(path -> path.getFileName().toString())
+                        .forEach(sources::add);
+            } catch (IOException ignored) {
+                // Tab completion should stay best-effort.
+            }
+        }
+        return sources.stream()
+                .distinct()
+                .filter(value -> value.toLowerCase(Locale.ROOT).startsWith(normalizedPrefix))
+                .limit(20)
+                .toList();
+    }
+
+    private static @Nullable Boolean parseToggle(CommandSender sender, String[] args, int index, String name) {
+        if (args.length <= index) {
+            String usage = "debug".equals(name) ? "/ysm debug" : "/ysm config " + name;
+            sender.sendMessage(ChatColor.RED + "Usage: " + usage + " <on|off>");
+            return null;
+        }
+        String value = args[index].toLowerCase(Locale.ROOT);
+        return switch (value) {
+            case "on", "true", "yes", "1", "enable", "enabled" -> true;
+            case "off", "false", "no", "0", "disable", "disabled" -> false;
+            default -> {
+                sender.sendMessage(ChatColor.RED + "Expected on/off for " + name + ", got: " + args[index]);
+                yield null;
+            }
+        };
     }
 
     @Override
@@ -427,6 +810,118 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             @NotNull Command command,
             @NotNull String alias,
         String @NotNull [] args) {
+        boolean admin = isAdmin(sender);
+        if (args.length == 1) {
+            List<String> roots = new ArrayList<>(List.of("sync", "status", "models", "diagnose"));
+            if (admin) {
+                roots.addAll(List.of("source", "config", "debug", "apply", "handshake", "dist", "native"));
+            }
+            return roots.stream()
+                    .filter(value -> value.startsWith(args[0].toLowerCase(Locale.ROOT)))
+                    .toList();
+        }
+
+        String root = args[0].toLowerCase(Locale.ROOT);
+        if ("sync".equals(root)) {
+            if (!admin) {
+                return List.of();
+            }
+            if (args.length == 2) {
+                String prefix = args[1].toLowerCase(Locale.ROOT);
+                List<String> targets = new ArrayList<>(List.of("all"));
+                targets.addAll(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList());
+                return targets.stream()
+                        .filter(value -> value.toLowerCase(Locale.ROOT).startsWith(prefix))
+                        .toList();
+            }
+            if (args.length == 3) {
+                return nativeCacheSourceSuggestions(args[2]);
+            }
+            return List.of();
+        }
+        if ("status".equals(root) || "diagnose".equals(root) || "diag".equals(root)) {
+            if (args.length == 2 && admin) {
+                String prefix = args[1].toLowerCase(Locale.ROOT);
+                return Bukkit.getOnlinePlayers().stream()
+                        .map(Player::getName)
+                        .filter(name -> name.toLowerCase(Locale.ROOT).startsWith(prefix))
+                        .toList();
+            }
+            return List.of();
+        }
+        if ("source".equals(root)) {
+            if (!admin) {
+                return List.of();
+            }
+            if (args.length == 2) {
+                String prefix = args[1].toLowerCase(Locale.ROOT);
+                List<String> targets = new ArrayList<>(List.of("default", "all"));
+                targets.addAll(Bukkit.getOnlinePlayers().stream().map(Player::getName).toList());
+                return targets.stream()
+                        .filter(value -> value.toLowerCase(Locale.ROOT).startsWith(prefix))
+                        .toList();
+            }
+            if (args.length == 3) {
+                List<String> values = new ArrayList<>(nativeCacheSourceSuggestions(args[2]));
+                if ("clear".startsWith(args[2].toLowerCase(Locale.ROOT))) {
+                    values.add("clear");
+                }
+                return values;
+            }
+            return List.of();
+        }
+        if ("config".equals(root)) {
+            if (!admin) {
+                return List.of();
+            }
+            if (args.length == 2) {
+                return List.of("status", "source", "speed", "autosync", "packetlog", "modelscan", "capture").stream()
+                        .filter(value -> value.startsWith(args[1].toLowerCase(Locale.ROOT)))
+                        .toList();
+            }
+            if (args.length == 3 && List.of("autosync", "packetlog", "modelscan", "capture")
+                    .contains(args[1].toLowerCase(Locale.ROOT))) {
+                return List.of("on", "off").stream()
+                        .filter(value -> value.startsWith(args[2].toLowerCase(Locale.ROOT)))
+                        .toList();
+            }
+            if (args.length == 3 && "source".equalsIgnoreCase(args[1])) {
+                return nativeCacheSourceSuggestions(args[2]);
+            }
+            if (args.length == 3 && "speed".equalsIgnoreCase(args[1])) {
+                return List.of("1", "2", "4").stream()
+                        .filter(value -> value.startsWith(args[2].toLowerCase(Locale.ROOT)))
+                        .toList();
+            }
+            if (args.length == 4 && "speed".equalsIgnoreCase(args[1])) {
+                return List.of("24576", "29963", "59926").stream()
+                        .filter(value -> value.startsWith(args[3].toLowerCase(Locale.ROOT)))
+                        .toList();
+            }
+            return List.of();
+        }
+        if ("debug".equals(root)) {
+            if (!admin) {
+                return List.of();
+            }
+            if (args.length == 2) {
+                return List.of("status", "on", "off").stream()
+                        .filter(value -> value.startsWith(args[1].toLowerCase(Locale.ROOT)))
+                        .toList();
+            }
+            return List.of();
+        }
+        if ("models".equals(root)) {
+            if (args.length == 2 && admin) {
+                return List.of("reload").stream()
+                        .filter(value -> value.startsWith(args[1].toLowerCase(Locale.ROOT)))
+                        .toList();
+            }
+            return List.of();
+        }
+        if (!admin) {
+            return List.of();
+        }
         if (args.length == 1) {
             return List.of("status", "handshake", "debug", "models", "dist", "apply", "native").stream()
                     .filter(value -> value.startsWith(args[0].toLowerCase(Locale.ROOT)))
@@ -687,10 +1182,10 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
     }
 
     private boolean scheduleAutoNativeCacheReplay(Player player) {
-        String captureName = autoNativeCacheCaptureName == null ? "" : autoNativeCacheCaptureName.trim();
+        String captureName = nativeCacheSourceFor(player);
         if (captureName.isEmpty()) {
             getLogger().warning("YSM auto native cache replay skipped: player=" + player.getName()
-                    + ", reason=empty sync.auto-native-cache-capture.");
+                    + ", reason=empty native cache source.");
             return false;
         }
 
@@ -721,6 +1216,12 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                 + ", intervalTicks=" + autoNativeCacheIntervalTicks
                 + ", chunkBytes=" + autoNativeCacheChunkBytes + ".");
         return true;
+    }
+
+    private String nativeCacheSourceFor(Player player) {
+        String override = playerNativeCacheSources.get(player.getUniqueId());
+        String source = override == null ? autoNativeCacheCaptureName : override;
+        return source == null ? "" : source.trim();
     }
 
     private boolean scheduleAutoGeneratedCacheReplay(Player player) {
@@ -781,6 +1282,9 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
     private boolean handleModelsCommand(CommandSender sender, String[] args) {
         if (args.length >= 2 && "reload".equalsIgnoreCase(args[1])) {
+            if (!requireAdmin(sender, "/ysm models reload")) {
+                return true;
+            }
             reloadModelRepository(true);
         }
 
@@ -1003,7 +1507,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
     private boolean handleApplyCommand(CommandSender sender, String[] args) {
         if (args.length < 3) {
-            sender.sendMessage(ChatColor.RED + "Usage: /paperysm apply <player> <modelId> [textureId] [disabled]");
+            sender.sendMessage(ChatColor.RED + "Usage: /ysm apply <player> <modelId> [textureId] [disabled]");
             return true;
         }
 
@@ -1033,7 +1537,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         if (modelEntry.isEmpty() && !defaultModel && strictRepositoryModel) {
             if (sender != null) {
                 sender.sendMessage(ChatColor.RED + "Loaded model not found: " + modelId);
-                sender.sendMessage(ChatColor.GRAY + "Use /paperysm models reload after adding .ysm files.");
+                sender.sendMessage(ChatColor.GRAY + "Use /ysm models reload after adding .ysm files.");
             }
             return new ModelSelectionApplyResult(false, 0, Bukkit.getOnlinePlayers().size(), false, false, "loaded model not found");
         }
@@ -1456,7 +1960,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
         if ("report".equals(action)) {
             if (args.length < 3) {
-                sender.sendMessage(ChatColor.RED + "Usage: /paperysm dist report <player> [keys|keys-models|legacy] [s2c|c2s|both] [paddingBytes]");
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm dist report <player> [keys|keys-models|legacy] [s2c|c2s|both] [paddingBytes]");
                 return true;
             }
             Player player = Bukkit.getPlayerExact(args[2]);
@@ -1486,7 +1990,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
         if ("bootstrap".equals(action)) {
             if (args.length < 3) {
-                sender.sendMessage(ChatColor.RED + "Usage: /paperysm dist bootstrap <player> [mode] [variant] [paddingBytes]");
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm dist bootstrap <player> [mode] [variant] [paddingBytes]");
                 return true;
             }
             Player player = Bukkit.getPlayerExact(args[2]);
@@ -1510,7 +2014,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
         if ("probe".equals(action)) {
             if (args.length < 3) {
-                sender.sendMessage(ChatColor.RED + "Usage: /paperysm dist probe <player> [quick|full] [intervalTicks] [paddingBytes]");
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm dist probe <player> [quick|full] [intervalTicks] [paddingBytes]");
                 return true;
             }
             Player player = Bukkit.getPlayerExact(args[2]);
@@ -1530,7 +2034,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
         if ("stream".equals(action)) {
             if (args.length < 3) {
-                sender.sendMessage(ChatColor.RED + "Usage: /paperysm dist stream <player> [mode] [next|selected|initial]");
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm dist stream <player> [mode] [next|selected|initial]");
                 return true;
             }
             Player player = Bukkit.getPlayerExact(args[2]);
@@ -1548,7 +2052,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
         if ("streamprobe".equals(action)) {
             if (args.length < 3) {
-                sender.sendMessage(ChatColor.RED + "Usage: /paperysm dist streamprobe <player> [intervalTicks]");
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm dist streamprobe <player> [intervalTicks]");
                 return true;
             }
             Player player = Bukkit.getPlayerExact(args[2]);
@@ -1563,7 +2067,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
         if ("replay".equals(action)) {
             if (args.length < 4) {
-                sender.sendMessage(ChatColor.RED + "Usage: /paperysm dist replay <player> <captureNameOrFile> [fast|freesia|freesia-prelude]");
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm dist replay <player> <captureNameOrFile> [fast|freesia|freesia-prelude]");
                 return true;
             }
             Player player = Bukkit.getPlayerExact(args[2]);
@@ -1578,7 +2082,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
         if ("nativecache".equals(action) || "cache".equals(action) || "freesia-cache".equals(action)) {
             if (args.length < 4) {
-                sender.sendMessage(ChatColor.RED + "Usage: /paperysm dist nativecache <player> <captureName> [intervalTicks] [chunkBytes]");
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm dist nativecache <player> <captureName> [intervalTicks] [chunkBytes]");
                 return true;
             }
             Player player = Bukkit.getPlayerExact(args[2]);
@@ -1594,7 +2098,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
         if ("ysmcache".equals(action) || "localcache".equals(action)) {
             if (args.length < 3) {
-                sender.sendMessage(ChatColor.RED + "Usage: /paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]");
+                sender.sendMessage(ChatColor.RED + "Usage: /ysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]");
                 return true;
             }
             Player player = Bukkit.getPlayerExact(args[2]);
@@ -1640,7 +2144,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             return true;
         }
 
-        sender.sendMessage(ChatColor.RED + "Usage: /paperysm dist <status|prepare|auth|diagnose|ysmcache|nativecache|bootstrap|stream|streamprobe|probe|replay|report|clear> [args]");
+        sender.sendMessage(ChatColor.RED + "Usage: /ysm dist <status|prepare|auth|diagnose|ysmcache|nativecache|bootstrap|stream|streamprobe|probe|replay|report|clear> [args]");
         return true;
     }
 
@@ -1794,7 +2298,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             return;
         }
         if (modelRepository.entries().isEmpty()) {
-            sender.sendMessage(ChatColor.RED + "No loaded YSM models. Put .ysm files under the models folder and run /paperysm models reload.");
+            sender.sendMessage(ChatColor.RED + "No loaded YSM models. Put .ysm files under the models folder and run /ysm models reload.");
             return;
         }
         if (distributionRepository.prepared().isEmpty()) {
@@ -2105,7 +2609,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         try {
             type3Body = Files.readAllBytes(type3BodyFile);
             cacheEntries = loadNativeCacheEntries(sourceDir);
-            if (Files.exists(serverCacheFile)) {
+            if (cacheEntries.isEmpty() && Files.exists(serverCacheFile)) {
                 fallbackServerCacheBytes = Files.readAllBytes(serverCacheFile);
             }
             type1PaddingBytes = readOptionalPadding(sourceDir.resolve("type1-padding.txt"), FREESIA_NATIVE_TYPE1_PADDING_BYTES);
@@ -2243,7 +2747,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                     hashA,
                     hashB,
                     transferCacheKey);
-            NativeCacheEntry entry = new NativeCacheEntry(tokenHex, token, nativeName, cacheBytes);
+            NativeCacheEntry entry = NativeCacheEntry.fromBytes(tokenHex, token, nativeName, cacheBytes);
             cacheEntries.put(tokenHex, entry);
             manifestModels.add(new GeneratedNativeCacheModel(
                     token,
@@ -2631,9 +3135,9 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         int packetCount = 0;
         long totalCacheBytes = 0;
         for (NativeCacheRequestedEntry entry : requestedEntries) {
-            byte[] cacheBytes = entry.cacheBytes();
-            packetCount += (cacheBytes.length + chunkBytes - 1) / chunkBytes;
-            totalCacheBytes += cacheBytes.length;
+            int entryPacketCount = nativeCacheChunkCount(entry.cacheBytes(), chunkBytes);
+            packetCount = Math.addExact(packetCount, entryPacketCount);
+            totalCacheBytes += entry.cacheBytes();
         }
         NativeCacheReplaySession scheduled = state.withType5Scheduled(packetCount, totalCacheBytes);
         nativeCacheReplaySessions.put(player.getUniqueId(), scheduled);
@@ -2641,16 +3145,15 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         UUID playerId = player.getUniqueId();
         int sequence = 0;
         for (NativeCacheRequestedEntry entry : requestedEntries) {
-            byte[] cacheBytes = entry.cacheBytes();
-            int entryPacketCount = (cacheBytes.length + chunkBytes - 1) / chunkBytes;
+            long entryBytes = entry.cacheBytes();
+            int entryPacketCount = nativeCacheChunkCount(entryBytes, chunkBytes);
             for (int i = 0; i < entryPacketCount; i++) {
                 int index = sequence++;
                 int entryIndex = i;
-                int offset = i * chunkBytes;
-                int end = Math.min(cacheBytes.length, offset + chunkBytes);
+                long offset = (long) i * chunkBytes;
+                int readBytes = (int) Math.min((long) chunkBytes, entryBytes - offset);
                 byte[] token = entry.token();
-                byte[] chunk = Arrays.copyOfRange(cacheBytes, offset, end);
-                long totalBytes = cacheBytes.length;
+                long totalBytes = entryBytes;
                 String entryName = entry.name();
                 Bukkit.getScheduler().runTaskLater(this, () -> {
                     Player current = Bukkit.getPlayer(playerId);
@@ -2659,6 +3162,19 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                     }
                     NativeCacheReplaySession latest = nativeCacheReplaySessions.get(playerId);
                     if (latest == null) {
+                        return;
+                    }
+                    byte[] chunk;
+                    try {
+                        chunk = readNativeCacheChunk(entry, offset, readBytes);
+                    } catch (IOException ex) {
+                        getLogger().warning("YSM native cache replay type5 chunk read failed: player="
+                                + current.getName()
+                                + ", source=" + latest.sourceDir().toAbsolutePath()
+                                + ", entry=" + entryName
+                                + ", offset=" + offset
+                                + ", bytes=" + readBytes
+                                + ", reason=" + ex.getMessage() + ".");
                         return;
                     }
                     byte[] type5Plain = YsmRawPacketCodec.encodePlainType5(
@@ -2685,6 +3201,49 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         long replayDelayTicks = (long) packetCount * Math.max(1, state.intervalTicks()) + MODEL_STATE_LATE_REPLAY_DELAY_TICKS;
         scheduleSavedModelRestore(player, replayDelayTicks, "native-cache");
         scheduleModelStateReplay(player, replayDelayTicks, "native-cache");
+    }
+
+    private static int nativeCacheChunkCount(long cacheBytes, int chunkBytes) {
+        if (cacheBytes <= 0) {
+            return 0;
+        }
+        return Math.toIntExact((cacheBytes + chunkBytes - 1L) / chunkBytes);
+    }
+
+    private static byte[] readNativeCacheChunk(
+            NativeCacheRequestedEntry entry,
+            long offset,
+            int length) throws IOException {
+        if (length <= 0) {
+            return new byte[0];
+        }
+        byte[] inlineCacheBytes = entry.inlineCacheBytes();
+        if (inlineCacheBytes != null) {
+            int start = Math.toIntExact(offset);
+            int end = Math.addExact(start, length);
+            return Arrays.copyOfRange(inlineCacheBytes, start, end);
+        }
+
+        Path cacheFile = entry.cacheFile();
+        if (cacheFile == null) {
+            throw new IOException("No native cache file for " + entry.name());
+        }
+        ByteBuffer buffer = ByteBuffer.allocate(length);
+        try (SeekableByteChannel channel = Files.newByteChannel(cacheFile, StandardOpenOption.READ)) {
+            channel.position(offset);
+            while (buffer.hasRemaining()) {
+                int read = channel.read(buffer);
+                if (read < 0) {
+                    break;
+                }
+            }
+        }
+        if (buffer.position() != length) {
+            throw new IOException("Short native cache read for " + cacheFile
+                    + ": expected=" + length
+                    + ", actual=" + buffer.position());
+        }
+        return buffer.array();
     }
 
     private Path resolveNativeCacheReplayDir(String captureName) {
@@ -2719,12 +3278,12 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             if (!cacheFile.startsWith(sourceRoot)) {
                 throw new IllegalArgumentException("cache-map.tsv path escapes source dir at line " + (i + 1));
             }
-            byte[] cacheBytes = Files.readAllBytes(cacheFile);
-            if (cacheBytes.length == 0) {
+            long cacheBytes = Files.size(cacheFile);
+            if (cacheBytes == 0) {
                 throw new IllegalArgumentException("Empty cache file at line " + (i + 1));
             }
             String name = parts.length >= 3 && !parts[2].isBlank() ? parts[2] : tokenHex;
-            if (entries.put(tokenHex, new NativeCacheEntry(tokenHex, token, name, cacheBytes)) != null) {
+            if (entries.put(tokenHex, NativeCacheEntry.fromFile(tokenHex, token, name, cacheFile, cacheBytes)) != null) {
                 throw new IllegalArgumentException("Duplicate cache token at line " + (i + 1));
             }
         }
@@ -2745,7 +3304,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         if (!cacheEntries.isEmpty()) {
             long total = 0;
             for (NativeCacheEntry entry : cacheEntries.values()) {
-                total += entry.cacheBytes().length;
+                total += entry.cacheBytes();
             }
             return total;
         }
@@ -2779,7 +3338,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                 throw new IllegalArgumentException("Native cache request needs cache-map.tsv for " + count + " token(s)");
             }
             byte[] token = Arrays.copyOfRange(body, offset[0], body.length);
-            requested.add(new NativeCacheRequestedEntry(token, "server-cache.bin", fallbackServerCacheBytes));
+            requested.add(NativeCacheRequestedEntry.fromBytes(token, "server-cache.bin", fallbackServerCacheBytes));
             return new NativeCacheRequest(count, List.copyOf(requested), token.length);
         }
 
@@ -2804,7 +3363,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         ArrayList<String> names = new ArrayList<>(limit + 1);
         for (int i = 0; i < limit; i++) {
             NativeCacheRequestedEntry entry = entries.get(i);
-            names.add(entry.name() + "/" + formatBytes(entry.cacheBytes().length));
+            names.add(entry.name() + "/" + formatBytes(entry.cacheBytes()));
         }
         if (entries.size() > limit) {
             names.add("+" + (entries.size() - limit) + " more");
@@ -3946,12 +4505,34 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
     private record NativeCacheRequest(int count, List<NativeCacheRequestedEntry> entries, int tokenBytes) {
     }
 
-    private record NativeCacheRequestedEntry(byte[] token, String name, byte[] cacheBytes) {
+    private record NativeCacheRequestedEntry(
+            byte[] token,
+            String name,
+            @Nullable byte[] inlineCacheBytes,
+            @Nullable Path cacheFile,
+            long cacheBytes) {
+        static NativeCacheRequestedEntry fromBytes(byte[] token, String name, byte[] cacheBytes) {
+            return new NativeCacheRequestedEntry(token, name, cacheBytes, null, cacheBytes.length);
+        }
     }
 
-    private record NativeCacheEntry(String tokenHex, byte[] token, String name, byte[] cacheBytes) {
+    private record NativeCacheEntry(
+            String tokenHex,
+            byte[] token,
+            String name,
+            @Nullable byte[] inlineCacheBytes,
+            @Nullable Path cacheFile,
+            long cacheBytes) {
+        static NativeCacheEntry fromBytes(String tokenHex, byte[] token, String name, byte[] cacheBytes) {
+            return new NativeCacheEntry(tokenHex, token, name, cacheBytes, null, cacheBytes.length);
+        }
+
+        static NativeCacheEntry fromFile(String tokenHex, byte[] token, String name, Path cacheFile, long cacheBytes) {
+            return new NativeCacheEntry(tokenHex, token, name, null, cacheFile, cacheBytes);
+        }
+
         NativeCacheRequestedEntry asRequestedEntry() {
-            return new NativeCacheRequestedEntry(token, name, cacheBytes);
+            return new NativeCacheRequestedEntry(token, name, inlineCacheBytes, cacheFile, cacheBytes);
         }
     }
 

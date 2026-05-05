@@ -2,7 +2,10 @@
 
 ## Current Status
 
-PaperYSM now talks directly to YSM 2.6 clients on `yes_steve_model:2_6_0` without a Freesia Worker in the live path.
+PaperYSM now talks directly to YSM 2.6 clients on `yes_steve_model:2_6_0`.
+The usable runtime path is intentionally conservative: a real Fabric/YSM or
+Freesia worker generates the native cache material, and PaperYSM replays that
+cache bundle to Paper clients.
 
 Implemented Java-layer packets:
 
@@ -29,7 +32,10 @@ Implemented native cache replay:
 - S2C native type3 manifest/body from the Freesia-derived fixture.
 - C2S native type4 token request decode.
 - S2C native type5 chunk stream from `cache-map.tsv` and `server-cache` files.
-- Experimental generated cache command: `/paperysm dist ysmcache <player>
+- Normal player command: `/ysm sync` replays the configured native cache source
+  for the calling player. OPs can run `/ysm sync <player|all> [source]`,
+  `/ysm source ...`, and `/ysm config speed ...`.
+- Experimental generated cache command: `/ysm dist ysmcache <player>
   [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys]
   [washed-zstd|headerless-v3|encrypted-v3]` builds encrypted
   cached-model bodies from local prepared `.ysm` packages instead of reading
@@ -77,7 +83,16 @@ flowchart TD
 
 FreesiaII keeps a real YSM runtime alive through a Fabric Worker and a proxy session. The Worker emits the original YSM packets, while the proxy relays or maps them between players and backend servers.
 
-PaperYSM is taking the opposite approach: it reimplements the visible pieces inside a Paper plugin. There is no hidden Worker player, no proxy-side session lifecycle, and no full native YSM runtime. This makes the setup much simpler for a pure Paper test server, but it means PaperYSM must explicitly reproduce:
+PaperYSM is taking a narrower approach than FreesiaII. It does not keep a proxy
+chain alive for normal players, but it also does not pretend the Java-generated
+cache path is production-ready. The current product shape is:
+
+- use Fabric/YSM/Freesia worker output as the native cache oracle;
+- keep PaperYSM as the Paper-side distributor and state bridge;
+- keep local `.ysm` parsing/cache staging as a research path for later.
+
+This makes the setup much simpler for a pure Paper test server, but PaperYSM
+must still explicitly reproduce:
 
 - handshake and authorized model list state;
 - model selection and entity-state broadcast;
@@ -90,6 +105,19 @@ PaperYSM is taking the opposite approach: it reimplements the visible pieces ins
 YSMParser clarified how V3 `.ysm` packages are structured after decrypt/decompress: models, animations, textures, avatars, controller data, language files, and hashed path mappings. That explains why server-side sync is not just “send one `.ysm` file”; the native cache path has to advertise resource tokens and then serve the requested cache bodies.
 
 The Freesia-derived cache fixture taught the runtime part of the protocol: type4 requests contain token bytes, and `cache-map.tsv` links those tokens to concrete server cache files. PaperYSM can now use that mapping to send type5 chunks.
+
+`cache-map.tsv` paths are resolved relative to the native-cache fixture root,
+so `server-cache/<group>/<readable-name>.bin` works. `scripts\sync-worker-native-cache.bat`
+can reorganize the current fixture into nested folders and copy any worker
+`cache/server` files that match existing mapped cache bodies by SHA256. It does
+not invent map entries for unmatched worker files, because those files need the
+matching type3 token map before the client can request them.
+
+PaperYSM now keeps mapped server-cache files disk-backed while replaying a
+native-cache fixture. It reads only the currently scheduled type5 chunk from
+disk instead of loading every mapped cache body into a player session. The old
+single-file `server-cache.bin` fallback still exists for legacy captures, but
+large libraries should use `cache-map.tsv` entries.
 
 The Yes Steve Model technical report adds one important constraint for the
 generated path: packet type3 should establish the server/client cache key pair,
@@ -116,8 +144,8 @@ investigation and recommended next route.
 
 ## Remaining Work
 
-- Generate the exact Freesia-compatible type3 manifest/body and cache entries
-  directly from local `.ysm` packages instead of relying on Freesia fixtures.
+- Export or capture complete worker oracle bundles for arbitrary models:
+  type3 manifest/body, token map, and server-cache bodies.
 - Validate the generated `ysmcache` type3 manifest against a real client and
   adjust key, entry, metadata/group/icon fields until the client requests the
   generated tokens and accepts the returned server-cache bytes.

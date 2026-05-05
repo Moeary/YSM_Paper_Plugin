@@ -161,8 +161,8 @@ handshake-retry-interval-ticks: 60
 debug: false
 
 logging:
-  model-scan-details: true
-  packet-details: true
+  model-scan-details: false
+  packet-details: false
   packet-hex-preview-bytes: 96
   raw-packet-hex-preview-bytes: 128
 
@@ -174,7 +174,7 @@ state:
   saved-models-file: "player-models.yml"
 
 distribution:
-  prepare-on-reload: true
+  prepare-on-reload: false
   chunk-bytes: 24576
   cache-dir: "cache/distribution"
   write-cache-files: false
