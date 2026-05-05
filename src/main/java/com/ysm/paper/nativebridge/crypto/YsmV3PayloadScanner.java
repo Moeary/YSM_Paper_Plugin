@@ -1,5 +1,8 @@
 package com.ysm.paper.nativebridge.crypto;
 
+import java.util.ArrayList;
+import java.util.List;
+
 final class YsmV3PayloadScanner {
     private static final int FACE_BYTES = 92;
 
@@ -482,6 +485,7 @@ final class YsmV3PayloadScanner {
     private static void skipYsmJson(YsmByteReader reader, int format, Counts counts) {
         reader.readString();
         if (reader.readVarInt() == 0) {
+            counts.profile = YsmModelProfile.EMPTY;
             return;
         }
 
@@ -489,7 +493,7 @@ final class YsmV3PayloadScanner {
             reader.readVarInt();
         }
 
-        reader.readString();
+        String metadataName = reader.readString();
         reader.readString();
         reader.readString();
         reader.readString();
@@ -508,34 +512,49 @@ final class YsmV3PayloadScanner {
 
         skipStringPairs(reader);
         reader.skipFloats(2);
-        skipStringPairs(reader);
+        List<YsmModelProfile.ExtraAnimation> extraAnimations = readStringPairs(reader);
 
+        List<YsmModelProfile.ExtraAnimationButton> extraAnimationButtons = new ArrayList<>();
+        List<YsmModelProfile.ExtraAnimationClassify> extraAnimationClassifies = new ArrayList<>();
         if (format > 9) {
             int buttons = reader.readVarIntAsInt();
             for (int i = 0; i < buttons; i++) {
-                reader.readString();
-                reader.readString();
+                String id = reader.readString();
+                String name = reader.readString();
                 expect(reader.readVarInt(), 0, "extra animation button marker");
                 int forms = reader.readVarIntAsInt();
+                List<YsmModelProfile.ButtonForm> buttonForms = new ArrayList<>(forms);
                 for (int j = 0; j < forms; j++) {
-                    reader.readString();
-                    reader.readString();
-                    reader.readString();
-                    reader.readString();
-                    reader.skipFloats(3);
-                    skipStringPairs(reader);
+                    String type = reader.readString();
+                    String title = reader.readString();
+                    String description = reader.readString();
+                    String value = reader.readString();
+                    float step = reader.readFloat();
+                    float min = reader.readFloat();
+                    float max = reader.readFloat();
+                    List<YsmModelProfile.ExtraAnimation> labels = readStringPairs(reader);
+                    buttonForms.add(new YsmModelProfile.ButtonForm(
+                            type,
+                            title,
+                            description,
+                            value,
+                            step,
+                            min,
+                            max,
+                            labels));
                 }
+                extraAnimationButtons.add(new YsmModelProfile.ExtraAnimationButton(id, name, buttonForms));
             }
 
             int classifyCount = reader.readVarIntAsInt();
             for (int i = 0; i < classifyCount; i++) {
-                reader.readString();
-                skipStringPairs(reader);
+                String id = reader.readString();
+                extraAnimationClassifies.add(new YsmModelProfile.ExtraAnimationClassify(id, readStringPairs(reader)));
             }
         }
 
-        reader.readString();
-        reader.readString();
+        String defaultTexture = reader.readString();
+        String previewAnimation = reader.readString();
         reader.readVarInt();
         if (format > 4) {
             reader.readVarInt();
@@ -544,6 +563,14 @@ final class YsmV3PayloadScanner {
             reader.readVarInt();
             reader.readVarInt();
         }
+
+        counts.profile = new YsmModelProfile(
+                metadataName,
+                defaultTexture,
+                previewAnimation,
+                extraAnimations,
+                extraAnimationButtons,
+                extraAnimationClassifies);
 
         String guiForeground = "";
         String guiBackground = "";
@@ -602,6 +629,15 @@ final class YsmV3PayloadScanner {
         }
     }
 
+    private static List<YsmModelProfile.ExtraAnimation> readStringPairs(YsmByteReader reader) {
+        int count = reader.readVarIntAsInt();
+        List<YsmModelProfile.ExtraAnimation> pairs = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            pairs.add(new YsmModelProfile.ExtraAnimation(reader.readString(), reader.readString()));
+        }
+        return pairs;
+    }
+
     private static void skipStrings(YsmByteReader reader) {
         int count = reader.readVarIntAsInt();
         for (int i = 0; i < count; i++) {
@@ -632,6 +668,7 @@ final class YsmV3PayloadScanner {
         private int functions;
         private int languages;
         private int subEntities;
+        private YsmModelProfile profile = YsmModelProfile.EMPTY;
 
         private ScanResult toResult(int parsedBytes, int totalBytes) {
             return new ScanResult(
@@ -652,7 +689,8 @@ final class YsmV3PayloadScanner {
                     sounds,
                     functions,
                     languages,
-                    subEntities);
+                    subEntities,
+                    profile);
         }
     }
 
@@ -674,7 +712,8 @@ final class YsmV3PayloadScanner {
             int sounds,
             int functions,
             int languages,
-            int subEntities) {
+            int subEntities,
+            YsmModelProfile profile) {
         boolean consumedAll() {
             return parsedBytes == totalBytes;
         }

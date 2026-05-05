@@ -73,6 +73,17 @@ tasks.register("analyzeFreesiaCapture", JavaExec) {
     }
 }
 
+tasks.register("analyzeAnimationCapture", JavaExec) {
+    dependsOn("testClasses")
+    classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
+    mainClass = "com.ysm.paper.protocol.YsmAnimationCaptureAnalyzerMain"
+
+    doFirst {
+        args(project.findProperty("ysmAnimationCaptureDir")
+                ?: "references/analysis-artifacts/freesia-latest-extracted")
+    }
+}
+
 tasks.register("ysmNativeDllProbe", JavaExec) {
     dependsOn("testClasses")
     classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath

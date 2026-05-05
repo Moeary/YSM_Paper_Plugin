@@ -1,5 +1,6 @@
 package com.ysm.paper.nativebridge.crypto;
 
+import java.io.ByteArrayOutputStream;
 import java.security.SecureRandom;
 import java.util.Arrays;
 
@@ -82,14 +83,23 @@ public final class YsmCrypto {
 
     public static byte[] decryptCachedModel(byte[] cachedModel, String hashedFileName, byte[] runtimeKey) {
         long[] fileHash = deriveHashFromFileName(hashedFileName, runtimeKey);
+        return decryptCachedModel(cachedModel, fileHash[0], fileHash[1], runtimeKey);
+    }
+
+    public static byte[] decryptCachedModel(
+            byte[] cachedModel,
+            long fileHashA,
+            long fileHashB,
+            byte[] runtimeKey) {
+        requireKey(runtimeKey);
         if (cachedModel.length < 16) {
             throw new IllegalArgumentException("Cached model is too short");
         }
 
         int hashOffset = cachedModel.length - 8;
         long actual = CityHash64.hashWithSeed(cachedModel, 0, hashOffset, YsmSeeds.CACHE_VERIFICATION)
-                ^ fileHash[0]
-                ^ fileHash[1];
+                ^ fileHashA
+                ^ fileHashB;
         long expected = LittleEndian.readLong(cachedModel, hashOffset);
         if (actual != expected) {
             throw new IllegalArgumentException("Cached model hash mismatch");
@@ -119,6 +129,59 @@ public final class YsmCrypto {
             throw new IllegalArgumentException("Cached model padding exceeds payload");
         }
         return Arrays.copyOfRange(plainPadded, start, plainPadded.length);
+    }
+
+    public static byte[] encryptCachedModel(
+            byte[] payload,
+            int format,
+            long fileHashA,
+            long fileHashB,
+            byte[] runtimeKey) {
+        return encryptCachedModel(payload, format, fileHashA, fileHashB, runtimeKey, new byte[0]);
+    }
+
+    public static byte[] encryptCachedModel(
+            byte[] payload,
+            int format,
+            long fileHashA,
+            long fileHashB,
+            byte[] runtimeKey,
+            byte[] padding) {
+        requireKey(runtimeKey);
+        byte[] safePayload = payload == null ? new byte[0] : payload;
+        byte[] safePadding = padding == null ? new byte[0] : padding;
+        if (safePadding.length > 0x3ff) {
+            throw new IllegalArgumentException("Cached model padding is limited to 1023 bytes");
+        }
+
+        byte[] plainPadded = new byte[2 + safePadding.length + safePayload.length];
+        plainPadded[0] = (byte) (safePadding.length & 0xff);
+        plainPadded[1] = (byte) ((safePadding.length >>> 8) & 0x03);
+        System.arraycopy(safePadding, 0, plainPadded, 2, safePadding.length);
+        System.arraycopy(safePayload, 0, plainPadded, 2 + safePadding.length, safePayload.length);
+
+        byte[] xored = mt19937Xor(plainPadded, runtimeKey);
+        byte[] encryptedData = modifiedChaCha(xored, runtimeKey, YsmSeeds.CACHE_DECRYPTION, true);
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream(16 + encryptedData.length + Long.BYTES);
+        writeVarInt(body, 1);
+        writeVarInt(body, 0);
+        writeVarInt(body, 0);
+        writeVarInt(body, 0);
+        writeVarInt(body, format);
+        writeVarInt(body, 0);
+        writeVarInt(body, 0);
+        writeVarInt(body, 0);
+        writeVarInt(body, 0);
+        body.writeBytes(encryptedData);
+
+        byte[] withoutHash = body.toByteArray();
+        byte[] out = Arrays.copyOf(withoutHash, withoutHash.length + Long.BYTES);
+        LittleEndian.writeLong(out, withoutHash.length,
+                CityHash64.hashWithSeed(withoutHash, YsmSeeds.CACHE_VERIFICATION)
+                        ^ fileHashA
+                        ^ fileHashB);
+        return out;
     }
 
     static byte[] mt19937Xor(byte[] data, byte[] key) {
@@ -168,6 +231,15 @@ public final class YsmCrypto {
         byte[] keyPart = Arrays.copyOfRange(key, 0, 32);
         byte[] ivPart = Arrays.copyOfRange(key, 32, 56);
         return XChaCha20.xor(XChaCha20.keySetup(keyPart, ivPart, rounds), data);
+    }
+
+    private static void writeVarInt(ByteArrayOutputStream out, long value) {
+        long remaining = value;
+        while ((remaining & ~0x7fL) != 0) {
+            out.write((int) (remaining & 0x7fL) | 0x80);
+            remaining >>>= 7;
+        }
+        out.write((int) remaining);
     }
 
     private static void requireKey(byte[] key) {

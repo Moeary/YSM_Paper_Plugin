@@ -99,7 +99,9 @@ Rendering native calls are intentionally out of scope for Paper.
 6. Reconstruct the native raw packet envelope and key-carrying packet types.
    Started in `YsmRawPacketCodec`: plaintext padding header, packet type VarInt,
    type `1`/`2` keys, type `3` metadata skeleton, type `4` marker, and a
-   body-only crypto self-test.
+   body-only crypto self-test. The cached-model encryption/decryption inverse is
+   now implemented in Java, so generated type5 payloads can be built without a
+   Freesia cache file once the type3 manifest generator is complete.
 7. Use captured C2S `id=2` packets to finish the native/raw model cache
    request/response sequence.
 8. Replace cached Worker bodies with locally generated bodies.
@@ -115,6 +117,7 @@ Rendering native calls are intentionally out of scope for Paper.
 ## Current Test Coverage
 
 - `cryptoSelfTest`: Java-only packet roundtrip and filename hash smoke test.
+  It also verifies native cached-model encrypt/decrypt roundtrip.
 - `rawPacketSelfTest`: Java native raw packet envelope and body-only crypto
   smoke test for packet types `1`, `2`, and `4`.
 - `verifyCppVectors`: compiles `YSMParser/tools/YSMCryptoVectors.cpp`, generates

@@ -1,6 +1,7 @@
 package com.ysm.paper.model;
 
 import com.ysm.paper.nativebridge.crypto.YsmArchiveProbe;
+import com.ysm.paper.nativebridge.crypto.YsmModelProfile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,7 +63,8 @@ public final class YsmModelRepository {
                         result.size(),
                         result.decompressedBytes(),
                         result.payloadTrailingBytes(),
-                        result.payloadSummary()));
+                        result.payloadSummary(),
+                        result.profile()));
             } catch (Exception ex) {
                 failures.add(new Failure(file, ex.getMessage()));
             }
@@ -95,7 +97,8 @@ public final class YsmModelRepository {
             long size,
             int decompressedBytes,
             int payloadTrailingBytes,
-            String summary) {
+            String summary,
+            YsmModelProfile profile) {
     }
 
     public record Failure(Path file, String message) {

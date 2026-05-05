@@ -48,7 +48,9 @@ public final class YsmArchiveProbeMain {
                         + " decompressed=" + result.decompressedBytes()
                         + " payloadConsumed=" + result.payloadConsumedAll()
                         + " payloadTrailing=" + result.payloadTrailingBytes()
-                        + " resources={" + result.payloadSummary() + "}");
+                        + " resources={" + result.payloadSummary() + "}"
+                        + " profile={" + result.profile().compact() + "}"
+                        + " animationMap={" + result.profile().animationDebugSummary(12) + "}");
                 if (extracted != null) {
                     dumpIfRequested(options, file, extracted);
                 }

@@ -73,16 +73,38 @@ Direct PaperYSM test:
 
 - Join `127.0.0.1:30001`.
 - Uses `test-server\direct-paper`.
-- Useful for testing PaperYSM without Velocity/FreesiaII.
+- Primary runtime for PaperYSM work. Use the channel switch script below to
+  choose which Paper-side model sync path is active.
 
 FreesiaII comparison stack:
 
 - Join through Velocity at `127.0.0.1:30000`.
 - Starts `test-server\paper-backend`, `test-server\velocity-proxy`, and
   `test-server\freesia-worker`.
-- Useful for fresh captures and behavior comparison against FreesiaII.
+- Useful for fresh captures and behavior comparison against FreesiaII. It is
+  not the normal PaperYSM development runtime.
 
 Only run one Paper server bound to `30001` at a time.
+
+Switch the direct Paper server channel profile before restarting it:
+
+```bat
+scripts\switch-direct-paper-channel.bat status
+scripts\switch-direct-paper-channel.bat freesia
+scripts\switch-direct-paper-channel.bat generated -Model all
+scripts\switch-direct-paper-channel.bat generated -Model all -GeneratedLayout keys
+scripts\switch-direct-paper-channel.bat generated -Model all -FreshToken
+scripts\switch-direct-paper-channel.bat auth-only
+```
+
+- `freesia`: direct Paper replays the captured `freesia-latest` native-cache
+  fixture after handshake.
+- `generated`: direct Paper auto-builds native cache packets from local `.ysm`
+  models after handshake.
+- `generated -FreshToken`: same path, but changes generated cache tokens so the
+  client requests the cache again even if a previous test already cached it.
+- `auth-only`: Java handshake and authorized model list only; no native cache
+  stream.
 
 ## Useful Commands
 
@@ -91,8 +113,15 @@ Only run one Paper server bound to `30001` at a time.
 /paperysm models
 /paperysm models reload
 /paperysm dist diagnose [player]
+/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys]
 /paperysm dist nativecache <player> freesia-latest 1 59926
-/paperysm apply <player> <modelId> [textureId]
+```
+
+Analyze Freesia animation request/broadcast pairs from an extracted capture:
+
+```powershell
+gradle analyzeAnimationCapture
+gradle analyzeAnimationCapture -PysmAnimationCaptureDir="references/analysis-artifacts/freesia-latest-extracted"
 ```
 
 The current working native-cache replay source is `freesia-latest`. It is built

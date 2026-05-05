@@ -23,14 +23,37 @@ public final class YsmCryptoSelfTest {
         long[] hash = YsmCrypto.deriveHashFromFileName("00112233445566778899aabbccddeeff00112233", key);
         boolean filenameHashLooksValid = hash.length == 2 && (hash[0] != 0 || hash[1] != 0);
 
-        return new Result(packetRoundTrip && filenameHashLooksValid, packetRoundTrip, filenameHashLooksValid);
+        byte[] cachedPlain = "paper-ysm cached model crypto self test".getBytes(StandardCharsets.UTF_8);
+        byte[] cachedModel = YsmCrypto.encryptCachedModel(
+                cachedPlain,
+                15,
+                0x1020304050607080L,
+                0x1122334455667788L,
+                key);
+        byte[] cachedDecrypted = YsmCrypto.decryptCachedModel(
+                cachedModel,
+                0x1020304050607080L,
+                0x1122334455667788L,
+                key);
+        boolean cacheRoundTrip = Arrays.equals(cachedPlain, cachedDecrypted);
+
+        return new Result(
+                packetRoundTrip && filenameHashLooksValid && cacheRoundTrip,
+                packetRoundTrip,
+                filenameHashLooksValid,
+                cacheRoundTrip);
     }
 
-    public record Result(boolean success, boolean packetRoundTrip, boolean filenameHashLooksValid) {
+    public record Result(
+            boolean success,
+            boolean packetRoundTrip,
+            boolean filenameHashLooksValid,
+            boolean cacheRoundTrip) {
         public String describe() {
             return "success=" + success
                     + ", packetRoundTrip=" + packetRoundTrip
-                    + ", filenameHash=" + filenameHashLooksValid;
+                    + ", filenameHash=" + filenameHashLooksValid
+                    + ", cacheRoundTrip=" + cacheRoundTrip;
         }
     }
 }

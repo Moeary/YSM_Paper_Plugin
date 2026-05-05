@@ -95,13 +95,12 @@ public final class YsmProtocol {
             throw new YsmProtocolException("expected client animation request id 7, got " + id);
         }
         int action = reader.readVarInt();
-        int layer = reader.readVarInt();
+        String name = reader.readUtf();
         int targetEntityId = reader.readVarInt();
-        String name = reader.remaining() == 0 ? "" : reader.readUtf();
         if (reader.remaining() != 0) {
             throw new YsmProtocolException("client animation request has " + reader.remaining() + " trailing byte(s)");
         }
-        return new ClientAnimationRequest(action, layer, targetEntityId, name);
+        return new ClientAnimationRequest(action, name, targetEntityId);
     }
 
     public static byte[] encodeAnimation(int entityId, int layer, int action, String name) {
@@ -174,7 +173,7 @@ public final class YsmProtocol {
     public record ClientModelSelection(String modelId, String textureId) {
     }
 
-    public record ClientAnimationRequest(int action, int layer, int targetEntityId, String name) {
+    public record ClientAnimationRequest(int action, String name, int targetEntityId) {
     }
 
     private static final class Reader {

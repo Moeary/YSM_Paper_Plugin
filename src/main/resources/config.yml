@@ -27,6 +27,13 @@ logging:
 models-dir: "models"
 scan-models-on-enable: true
 
+# Remember the last YSM model/texture each player selected and re-apply it
+# after the next compatible YSM handshake. This keeps returning players visible
+# as their saved model without requiring them to click the skin/model picker.
+state:
+  remember-player-models: true
+  saved-models-file: "player-models.yml"
+
 # Internal model distribution staging. This prepares decrypted V3 archives as
 # chunked server-side transfer packages. Transfer chunks currently use the
 # washed-zstd payload to keep memory/network cost close to the original cache
@@ -67,6 +74,21 @@ sync:
   auto-native-cache-delay-ticks: 20
   auto-native-cache-interval-ticks: 2
   auto-native-cache-chunk-bytes: 29963
+  # Direct Paper generated-channel test path. When enabled and the Freesia
+  # fixture auto replay is disabled, PaperYSM builds encrypted native cache
+  # bodies from local .ysm models and sends them after handshake.
+  auto-generated-cache-on-handshake: false
+  auto-generated-cache-model: "all"
+  auto-generated-cache-delay-ticks: 20
+  auto-generated-cache-interval-ticks: 1
+  auto-generated-cache-chunk-bytes: 24576
+  # legacy keeps the current type3 body that reaches type4/type5 on test
+  # clients. keys sends ServerCacheKey/ClientCacheKey in type3 and encrypts
+  # type5 cache bodies with ServerCacheKey for protocol experiments.
+  auto-generated-cache-layout: "legacy"
+  # Blank keeps stable cache tokens. Set a unique value on a controlled test
+  # client to force a fresh generated cache request/progress cycle.
+  auto-generated-cache-token-salt: ""
   # Experimental native/raw sync probe. When enabled, PaperYSM sends one
   # generated S2C id=1 type=1 bootstrap packet after handshake so we can see
   # whether the client answers with C2S id=2. Keep disabled on normal servers

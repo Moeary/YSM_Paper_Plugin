@@ -32,7 +32,7 @@ public final class YsmArchiveProbe {
         if (LittleEndian.readInt(bytes, 0) == YSGP_MAGIC) {
             int crypto = readBigEndianInt(bytes, 4);
             return new Result(file, bytes.length, "V" + crypto, crypto, false, false, false,
-                    0, 0, 0, 0, 0, 0, false, "");
+                    0, 0, 0, 0, 0, 0, false, "", YsmModelProfile.EMPTY);
         }
 
         throw new IllegalArgumentException("unsupported YSM magic");
@@ -99,7 +99,7 @@ public final class YsmArchiveProbe {
 
         Result result = new Result(file, bytes.length, "V3", format, true, true, zstd.complete(),
                 encryptedBody.length, ysmZstd.length, zstd.blocks(), decompressed.length,
-                scan.parsedBytes(), scan.trailingBytes(), scan.consumedAll(), scan.compact());
+                scan.parsedBytes(), scan.trailingBytes(), scan.consumedAll(), scan.compact(), scan.profile());
         return new ExtractedV3Archive(result, zstd.data(), decompressed);
     }
 
@@ -241,7 +241,8 @@ public final class YsmArchiveProbe {
             int payloadParsedBytes,
             int payloadTrailingBytes,
             boolean payloadConsumedAll,
-            String payloadSummary) {
+            String payloadSummary,
+            YsmModelProfile profile) {
     }
 
     public record ExtractedV3Archive(Result result, byte[] washedZstd, byte[] decompressed) {
