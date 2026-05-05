@@ -84,6 +84,26 @@ tasks.register("analyzeAnimationCapture", JavaExec) {
     }
 }
 
+tasks.register("analyzeNativeCacheFixture", JavaExec) {
+    dependsOn("testClasses")
+    classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath
+    mainClass = "com.ysm.paper.nativebridge.crypto.YsmNativeCacheFixtureAnalyzerMain"
+
+    doFirst {
+        args(project.findProperty("ysmNativeCacheFixture")
+                ?: "test-server/direct-paper/plugins/PaperYSM/captures/native-cache/freesia-latest")
+        if (project.hasProperty("ysmNativeCacheFilter")) {
+            args(project.property("ysmNativeCacheFilter").toString())
+        }
+        if (project.hasProperty("ysmNativeCacheLocalModel")) {
+            if (!project.hasProperty("ysmNativeCacheFilter")) {
+                args(".ysm")
+            }
+            args(project.property("ysmNativeCacheLocalModel").toString())
+        }
+    }
+}
+
 tasks.register("ysmNativeDllProbe", JavaExec) {
     dependsOn("testClasses")
     classpath = sourceSets.main.runtimeClasspath + sourceSets.test.runtimeClasspath

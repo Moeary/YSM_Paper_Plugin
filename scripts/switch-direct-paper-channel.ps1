@@ -8,6 +8,8 @@ param(
     [string]$TokenSalt = "",
     [ValidateSet("legacy", "keys")]
     [string]$GeneratedLayout = "legacy",
+    [ValidateSet("washed-zstd", "headerless-v3", "encrypted-v3")]
+    [string]$GeneratedPayload = "washed-zstd",
     [int]$IntervalTicks = 0,
     [int]$ChunkBytes = 0,
     [switch]$FreshToken,
@@ -195,6 +197,7 @@ sync:
   auto-generated-cache-interval-ticks: $generatedInterval
   auto-generated-cache-chunk-bytes: $generatedChunk
   auto-generated-cache-layout: "$GeneratedLayout"
+  auto-generated-cache-payload: "$GeneratedPayload"
   auto-generated-cache-token-salt: "$TokenSalt"
   experimental-bootstrap-on-handshake: $(Bool-Text $experimentalBootstrap)
   experimental-bootstrap-mode: "$bootstrapMode"
@@ -222,5 +225,7 @@ if ($modeKey -eq "generated" -and ![string]::IsNullOrWhiteSpace($TokenSalt)) {
 if ($modeKey -eq "generated") {
     Write-Host "Generated cache layout:"
     Write-Host "  $GeneratedLayout"
+    Write-Host "Generated cache payload:"
+    Write-Host "  $GeneratedPayload"
 }
 Show-Status $configPath

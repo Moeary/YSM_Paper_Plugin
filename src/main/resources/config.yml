@@ -86,6 +86,11 @@ sync:
   # clients. keys sends ServerCacheKey/ClientCacheKey in type3 and encrypts
   # type5 cache bodies with ServerCacheKey for protocol experiments.
   auto-generated-cache-layout: "legacy"
+  # washed-zstd is the earlier experimental payload and is known to reach
+  # type5 but not register as a GUI model. headerless-v3/encrypted-v3 test the
+  # technical-report observation that server cache plaintext is closer to a
+  # headerless encrypted YSM model than to decompressed resource payloads.
+  auto-generated-cache-payload: "washed-zstd"
   # Blank keeps stable cache tokens. Set a unique value on a controlled test
   # client to force a fresh generated cache request/progress cycle.
   auto-generated-cache-token-salt: ""

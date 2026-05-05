@@ -132,6 +132,28 @@ Rendering native calls are intentionally out of scope for Paper.
   washed-zstd payload as fixed-size transfer chunks while keeping decompressed
   payload hashes for validation.
 
+## Native Core Probe Status
+
+`scripts\probe-ysm-native-core.bat` records the current DLL evidence:
+
+- `ysm-core.dll` only exports `JNI_OnLoad`, `JNI_OnUnload`, and a build marker.
+- the Java native methods are therefore registered dynamically by `JNI_OnLoad`.
+- the DLL contains large `YSMS0`/`YSMS1`/`YSMS2` sections, matching the
+  VMProtect/virtualized-code expectation from the technical report.
+- direct `System.load` outside the YSM mod runtime fails with
+  `java.lang.RuntimeException: err: 56` for the local 2.6.2 and 2.6.5 DLLs.
+
+That makes a pure standalone JNI harness unlikely to work until the runtime
+check is understood or the real Fabric/Forge YSM environment is used as the
+host. The next useful oracle should come from Worker-side capture or dynamic
+instrumentation of the real YSM server runtime, not more guessed type5 payload
+shapes.
+
+`scripts\probe-worker-native-cache.bat` confirms the worker-oracle direction:
+the local `test-server\freesia-worker` has a native-generated Laffey
+server-cache file whose SHA256 matches the Freesia replay fixture exactly. See
+`docs\paperysm-native-worker-bridge.md` for the proposed bridge shape.
+
 ## Current Real-Model Validation
 
 Using `D:\BaiduNetdiskDownload\YSM模型（尽快保存下载） (2)\YSM各作者付费模型\星屑海螺`:

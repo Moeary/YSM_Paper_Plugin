@@ -113,7 +113,7 @@ scripts\switch-direct-paper-channel.bat auth-only
 /paperysm models
 /paperysm models reload
 /paperysm dist diagnose [player]
-/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys]
+/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]
 /paperysm dist nativecache <player> freesia-latest 1 59926
 ```
 
@@ -122,6 +122,13 @@ Analyze Freesia animation request/broadcast pairs from an extracted capture:
 ```powershell
 gradle analyzeAnimationCapture
 gradle analyzeAnimationCapture -PysmAnimationCaptureDir="references/analysis-artifacts/freesia-latest-extracted"
+```
+
+Analyze a native-cache fixture and compare its decrypted server-cache payload
+against a local `.ysm`:
+
+```powershell
+gradle analyzeNativeCacheFixture -PysmNativeCacheFilter="拉菲Ⅱ/拉菲Ⅱ_v1.2.ysm" -PysmNativeCacheLocalModel="test-server/direct-paper/plugins/PaperYSM/models/拉菲Ⅱ/拉菲Ⅱ_v1.2.ysm"
 ```
 
 The current working native-cache replay source is `freesia-latest`. It is built

@@ -30,12 +30,16 @@ Implemented native cache replay:
 - C2S native type4 token request decode.
 - S2C native type5 chunk stream from `cache-map.tsv` and `server-cache` files.
 - Experimental generated cache command: `/paperysm dist ysmcache <player>
-  [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys]` builds encrypted
+  [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys]
+  [washed-zstd|headerless-v3|encrypted-v3]` builds encrypted
   cached-model bodies from local prepared `.ysm` packages instead of reading
   Freesia `server-cache` files. `legacy` is the current body that reaches
   type4/type5; `keys` tests the technical-report model where type3 carries
   ServerCacheKey/ClientCacheKey and type5 bodies are encrypted with
-  ServerCacheKey.
+  ServerCacheKey. `washed-zstd` is the earlier payload shape; Freesia fixture
+  analysis shows real server-cache plaintext is not zstd, so `headerless-v3`
+  and `encrypted-v3` are now available to test headerless encrypted-model
+  payloads directly.
 - Player model selections are remembered in `player-models.yml` and restored
   after the next compatible handshake/cache replay.
 
@@ -93,6 +97,22 @@ and the bytes sent in type5 are the server-cache form. The client then decrypts
 that form with ServerCacheKey and writes its own ClientCacheKey-encrypted cache
 file. That means a generated Paper path must eventually produce the real
 server-cache bytes and not only a locally readable cache file.
+
+The local Freesia fixture confirms the same distinction in practice: decrypting
+the captured `拉菲Ⅱ/拉菲Ⅱ_v1.2.ysm` server-cache with the type3 ServerCacheKey
+returns a non-zstd payload (`868095` bytes), while PaperYSM's original generated
+path wrapped the local model's `washed-zstd` payload (`1313797` bytes). The
+transport can reach type4/type5, but the native client will not register a GUI
+model unless the cache plaintext shape matches what ysm-core expects. The
+fixture analyzer also reports `headerlessV3 hashOk=false`, so this particular
+server-cache blob is not just a local V3 `.ysm` body with the `YSGP` header
+removed.
+
+The latest `headerless-v3` generated-cache test reached type4 and streamed all
+54 requested type5 chunks for the Laffey model, then replayed the saved model
+state, but the client still did not show the model in the GUI. See
+`docs/ysm-core-native-investigation.md` for the current DLL/native-core
+investigation and recommended next route.
 
 ## Remaining Work
 

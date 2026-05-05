@@ -24,7 +24,7 @@
 | `/paperysm models reload` | 重新扫描模型仓库，并按配置准备分发包 | 无 | 添加/替换 `.ysm` 后无需重启。产品化后应保留。 |
 | `/paperysm apply <player> <modelId> [textureId] [disabled]` | 主动给目标玩家应用模型状态，并广播给兼容 viewer | 玩家名、模型 id、纹理 id、是否 disabled | 调试和手工运维都可用。当前要求命令发起时模型必须在本地仓库中，除非模型是 `default`。 |
 | `/paperysm dist diagnose [player]` | 汇总分发包与玩家同步状态 | 可选玩家名 | 当前最有价值的排障命令。比 `dist status` 更接近“为什么玩家看不到模型”。 |
-| `/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys]` | 从本地 `.ysm` 准备包生成实验 native cache，同步给玩家 | 玩家名、模型 id/all、发送间隔、chunk 大小、type3 布局 | 新的本地生成路径，不读取 Freesia `server-cache`。`legacy` 保留当前能触发 type4/type5 的布局；`keys` 用于验证 ServerCacheKey/ClientCacheKey 布局。 |
+| `/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]` | 从本地 `.ysm` 准备包生成实验 native cache，同步给玩家 | 玩家名、模型 id/all、发送间隔、chunk 大小、type3 布局、cache 明文 payload 形态 | 新的本地生成路径，不读取 Freesia `server-cache`。`legacy` 保留当前能触发 type4/type5 的布局；`keys` 用于验证 ServerCacheKey/ClientCacheKey 布局。`washed-zstd` 是旧实验形态；`headerless-v3`/`encrypted-v3` 用来验证服务端 cache 明文是否应接近去头的加密 `.ysm`。 |
 | `/paperysm dist nativecache <player> <captureName> [intervalTicks] [chunkBytes]` | 从 `captures/native-cache/<captureName>` 重放 Freesia 派生 native cache | 玩家名、捕获名、发送间隔、chunk 大小 | 当前让客户端出现同步进度条、选择服务器模型的工作路径。虽然依赖 fixture，但对本地测试很关键。 |
 
 README 里推荐的主路径基本也是这一组：
@@ -34,7 +34,7 @@ README 里推荐的主路径基本也是这一组：
 /paperysm models
 /paperysm models reload
 /paperysm dist diagnose [player]
-/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys]
+/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]
 /paperysm dist nativecache <player> freesia-latest 1 59926
 /paperysm apply <player> <modelId> [textureId]
 ```

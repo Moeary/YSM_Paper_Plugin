@@ -239,7 +239,7 @@ sync:
 /paperysm models
 /paperysm models reload
 /paperysm dist diagnose [player]
-/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys]
+/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]
 /paperysm dist nativecache <player> freesia-latest 1 59926
 /paperysm apply <player> <modelId> [textureId]
 ```
@@ -253,7 +253,7 @@ sync:
 | `/paperysm models` | 查看模型仓库扫描结果和准备好的分发包数量。 |
 | `/paperysm models reload` | 添加或替换 `.ysm` 后重新扫描模型。 |
 | `/paperysm dist diagnose [player]` | 汇总模型分发包、玩家握手、native-cache 同步状态。 |
-| `/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys]` | 实验性本地 `.ysm` 生成 native cache，不读取 Freesia cache 文件。`legacy` 是当前能到 type4/type5 的布局，`keys` 专门验证双 cache key 布局。 |
+| `/paperysm dist ysmcache <player> [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys] [washed-zstd|headerless-v3|encrypted-v3]` | 实验性本地 `.ysm` 生成 native cache，不读取 Freesia cache 文件。`legacy` 是当前能到 type4/type5 的布局，`keys` 专门验证双 cache key 布局；payload 参数用于对比旧 `washed-zstd` 和去 YSGP 头的加密 `.ysm` 形态。 |
 | `/paperysm dist nativecache <player> freesia-latest 1 59926` | 给玩家启动当前可用的 native-cache fixture 同步。 |
 | `/paperysm apply <player> <modelId> [textureId]` | 管理员手动给玩家套用模型状态并广播。 |
 
