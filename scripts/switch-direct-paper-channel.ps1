@@ -175,12 +175,6 @@ state:
   remember-player-models: true
   saved-models-file: "player-models.yml"
 
-distribution:
-  prepare-on-reload: false
-  chunk-bytes: 24576
-  cache-dir: "cache/openysm/distribution"
-  write-cache-files: $(Bool-Text $writeCacheFiles)
-
 sync:
   send-authorized-models-on-handshake: true
   warn-missing-native-sync-on-handshake: true

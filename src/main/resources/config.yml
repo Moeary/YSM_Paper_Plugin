@@ -9,7 +9,7 @@ handshake-retries: 2
 handshake-retry-interval-ticks: 60
 
 # Debug raw subpacket ids and sizes from the YSM channel. OPs can change this
-# online with /ysm debug <on|off>.
+# online with /ysm admin debug <on|off>.
 debug: false
 
 # Operational logs for Paper-side model scanning and packet distribution.
@@ -38,17 +38,6 @@ state:
   remember-player-models: true
   saved-models-file: "player-models.yml"
 
-# Experimental local .ysm decoding/cache staging. Keep this path for future
-# native-cache generation work, but the normal runtime below uses worker/Freesia
-# native cache fixtures instead of these Java-generated payloads.
-distribution:
-  prepare-on-reload: false
-  chunk-bytes: 24576
-  cache-dir: "cache/openysm/distribution"
-  # False keeps decrypted payloads in memory only. Enable for packet/native
-  # comparisons on a controlled test server.
-  write-cache-files: false
-
 # Java-layer sync packets that the original server sends after the 51/52
 # handshake. This advertises server-authorized model ids; native/raw cache data
 # is still a separate sync path.
@@ -72,8 +61,7 @@ sync:
   auto-native-cache-on-handshake: false
   auto-native-cache-capture: "freesia-from-velocity"
   auto-native-cache-delay-ticks: 20
-  # Native type5 send speed. OPs can change this online with
-  # /ysm config speed <intervalTicks> <chunkBytes>.
+  # Native type5 send speed for old fixture replay.
   auto-native-cache-interval-ticks: 1
   auto-native-cache-chunk-bytes: 59926
   # Java-generated cache from local .ysm files. This is the Paper-only path
@@ -81,7 +69,7 @@ sync:
   auto-generated-cache-on-handshake: true
   # Player-facing /ysm sync and join autosync send a catalog from the already
   # generated OpenYSM server-cache index. Admins generate/update that cache
-  # with /ysm dist prewarm or /ysm dist incremental.
+  # with /ysm admin cache, /ysm admin incremental, or /ysm admin fullsync.
   auto-generated-cache-model: "all"
   auto-generated-cache-delay-ticks: 20
   auto-generated-cache-interval-ticks: 1
@@ -91,6 +79,8 @@ sync:
   auto-generated-cache-max-models: 32
   # Generated-cache type5 burst size. With 64 KiB chunks, 2 packets/tick is
   # roughly 20-25 Mbps before overhead; raise only if your uplink has headroom.
+  # OPs can change the generated-cache speed online with
+  # /ysm admin speed <chunkBytes> <type5PacketsPerTick> [intervalTicks].
   auto-generated-cache-type5-packets-per-tick: 2
   # Optional startup cache prewarm. This only creates/updates missing OpenYSM
   # server-cache files under cache/openysm/server-cache; unchanged model files

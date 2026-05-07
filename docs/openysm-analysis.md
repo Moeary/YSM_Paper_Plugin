@@ -122,7 +122,7 @@ OpenYSM 的 NetworkHandler 注册了以下消息类型：
 | 15 | C2S | `C2SCompleteFeedbackPacket` | 传输完成反馈 |
 | 17 | C2S | `C2SRequestExecuteMolangPacket` | `CLIENT_MOLANG_EXECUTE_REQUEST_ID` |
 | 19 | S2C | `S2CSyncAnimationExpressionPacket` | 动画表达式同步 |
-| 21 | S2C | `S2CSyncPlayerStatePacket` | `ANIMATION_ID` |
+| 21 | S2C | `S2CSyncPlayerStatePacket` | `PLAYER_STATE_SYNC_ID` |
 | 22 | S2C | `S2CSyncVehicleModelPacket` | 载具模型同步 |
 | 51 | S2C | `S2CVersionCheckPacket` | `SERVER_HANDSHAKE_ID` |
 | 52 | C2S | `C2SVersionCheckPacket` | `CLIENT_HANDSHAKE_ID` |

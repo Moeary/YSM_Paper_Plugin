@@ -15,14 +15,17 @@ Implemented Java-layer packets:
 - `id=4`: entity model-state broadcast for model/texture changes.
 - `id=5`: client model selection, including server repository models and client/cache-local models.
 - `id=7`: client wheel animation request.
-- `id=21`: server animation broadcast generated from `id=7`.
+- `id=21`: server player-state sync; extra animation uses its `modelSwitch` field.
 - `id=1/2`: native/raw wrapper used by native cache replay.
 
 Wheel animation notes:
 
 - The 2.6 client `id=7` body is `action`, `name`, `targetEntityId`.
 - Empty `name` requests are resolved through the selected model's `.ysm`
-  `properties.extra_animation` profile table before broadcasting `id=21`.
+  `properties.extra_animation` table before broadcasting `id=21`.
+- Non-empty `name` can be an `extra_animation_classify` category. PaperYSM maps
+  the action index inside that category instead of treating the category as the
+  final animation id.
 - Debug logs include the requested action, client name, resolved server name,
   selected model, profile counts, and the fallback reason if resolution fails.
 
@@ -33,9 +36,9 @@ Implemented native cache replay:
 - S2C native type3 manifest/body from the Freesia-derived fixture.
 - C2S native type4 token request decode.
 - S2C native type5 chunk stream from `cache-map.tsv` and `server-cache` files.
-- Normal player command: `/ysm sync` replays the configured native cache source
-  for the calling player. OPs can run `/ysm sync <player|all> [source]`,
-  `/ysm source ...`, and `/ysm config speed ...`.
+- Normal player command: `/ysm sync` sends the configured generated OpenYSM
+  catalog for the calling player. OPs should use `/ysm admin syncall`,
+  `/ysm admin incremental`, `/ysm admin fullsync`, and `/ysm admin speed`.
 - Generated cache command: `/ysm dist ysmcache <player> [modelId|saved|all]
   [intervalTicks] [chunkBytes] [openysm|keys|legacy]
   [server-cache|washed-zstd|headerless-v3|encrypted-v3]` now has a Paper-only
@@ -49,7 +52,7 @@ Implemented native cache replay:
   which keeps full-folder tests from decrypting every `.ysm` in one pass.
   Generated type5 chunks can burst with
   `sync.auto-generated-cache-type5-packets-per-tick`; the current direct test
-  default is 32 models per batch, 64 KiB chunks, 8 chunks per tick.
+  default is 32 models per batch, 64 KiB chunks, 2 chunks per tick.
   OpenYSM ServerCacheKey/ClientCacheKey are persisted under
   `cache/openysm/index.properties`, so later `all` runs can be incremental
   against cache the client already has. Generated server-cache blobs are also
@@ -62,7 +65,9 @@ Implemented native cache replay:
   `headerless-v3`, and `encrypted-v3` modes remain only as debug/comparison
   routes.
 - Player model selections are remembered in `player-models.yml` and restored
-  after the next compatible handshake/cache replay.
+  after the next compatible handshake/cache replay. Saved state now also
+  includes active extra animation and roaming molang variables reported by
+  client `id=15` feedback.
 
 The current direct-Paper test fixture is
 `cache/freesia-from-velocity`. It must be produced from a real Velocity/Freesia
@@ -98,7 +103,7 @@ flowchart TD
     Q --> R["Client id=5 model selection"]
     R --> S["PaperYSM broadcasts id=4 model state"]
     Q --> T["Client id=7 wheel animation"]
-    T --> U["PaperYSM broadcasts id=21 animation"]
+    T --> U["PaperYSM broadcasts id=21 player-state modelSwitch"]
 ```
 
 ## Differences From FreesiaII
