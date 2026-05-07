@@ -36,23 +36,39 @@ Implemented native cache replay:
 - Normal player command: `/ysm sync` replays the configured native cache source
   for the calling player. OPs can run `/ysm sync <player|all> [source]`,
   `/ysm source ...`, and `/ysm config speed ...`.
-- Experimental generated cache command: `/ysm dist ysmcache <player>
-  [modelId|all] [intervalTicks] [chunkBytes] [legacy|keys]
-  [washed-zstd|headerless-v3|encrypted-v3]` builds encrypted
-  cached-model bodies from local prepared `.ysm` packages instead of reading
-  Freesia `server-cache` files. `legacy` is the current body that reaches
-  type4/type5; `keys` tests the technical-report model where type3 carries
-  ServerCacheKey/ClientCacheKey and type5 bodies are encrypted with
-  ServerCacheKey. `washed-zstd` is the earlier payload shape; Freesia fixture
-  analysis shows real server-cache plaintext is not zstd, so `headerless-v3`
-  and `encrypted-v3` are now available to test headerless encrypted-model
-  payloads directly.
+- Generated cache command: `/ysm dist ysmcache <player> [modelId|saved|all]
+  [intervalTicks] [chunkBytes] [openysm|keys|legacy]
+  [server-cache|washed-zstd|headerless-v3|encrypted-v3]` now has a Paper-only
+  `openysm/server-cache` path. It derives model hashes from the `.ysm`
+  model-hash field, builds an OpenYSM-style type3 body with ServerCacheKey and
+  ClientCacheKey, YSM-zstd-compresses the server-cache plaintext, encrypts it
+  with ServerCacheKey, and sends it as normal type5 chunks. Generated cache
+  preparation runs off the Paper main thread; automatic join sync defaults to
+  `saved`. `all` uses `sync.auto-generated-cache-max-models` as a batch size
+  and starts the next batch only after the previous type3/type5 step finishes,
+  which keeps full-folder tests from decrypting every `.ysm` in one pass.
+  Generated type5 chunks can burst with
+  `sync.auto-generated-cache-type5-packets-per-tick`; the current direct test
+  default is 32 models per batch, 64 KiB chunks, 8 chunks per tick.
+  OpenYSM ServerCacheKey/ClientCacheKey are persisted under
+  `cache/openysm/index.properties`, so later `all` runs can be incremental
+  against cache the client already has. Generated server-cache blobs are also
+  indexed under `cache/openysm/server-cache`, so `/ysm dist status` can report
+  how many cache files survived a forced stop. V1/V2 legacy `.ysm` shells are
+  unpacked as folder resources and serialized as OpenYSM server-cache format
+  65535. Successful generated
+  runs write `type3-body.bin`, `manifest.tsv`, and encrypted type5 cache blobs
+  under `cache/openysm/<session>`. The old `legacy`, `keys`, `washed-zstd`,
+  `headerless-v3`, and `encrypted-v3` modes remain only as debug/comparison
+  routes.
 - Player model selections are remembered in `player-models.yml` and restored
   after the next compatible handshake/cache replay.
 
 The current direct-Paper test fixture is
-`captures/native-cache/freesia-from-velocity`. It must be produced from a real
-Velocity/Freesia capture, not by pairing worker cache files by directory order.
+`cache/freesia-from-velocity`. It must be produced from a real Velocity/Freesia
+capture, not by pairing worker cache files by directory order. Legacy
+`captures/native-cache/<source>` directories are still accepted as a fallback,
+but new cache material should live under `cache/<channel>`.
 Once a client receives a complete captured cache stream, model download
 progress appears, server/cache-local model selection works, and wheel
 animations can be seen by other YSM clients.
@@ -173,19 +189,17 @@ fixture analyzer also reports `headerlessV3 hashOk=false`, so this particular
 server-cache blob is not just a local V3 `.ysm` body with the `YSGP` header
 removed.
 
-The latest `headerless-v3` generated-cache test reached type4 and streamed all
-54 requested type5 chunks for the Laffey model, then replayed the saved model
-state, but the client still did not show the model in the GUI. See
-`docs/ysm-core-native-investigation.md` for the current DLL/native-core
-investigation and recommended next route.
+The old `headerless-v3` generated-cache test reached type4 and streamed all
+requested type5 chunks for the Laffey model, but it still did not show the
+model in the GUI because it was not sending server-cache bytes. The current
+`openysm/server-cache` path replaces that guessed payload with YSM-zstd
+server-cache data derived from the local `.ysm` archive.
 
 ## Remaining Work
 
-- Capture complete Velocity/Freesia oracle bundles for arbitrary model sets:
-  type3 manifest/body, token map, and server-cache bodies.
-- Validate the generated `ysmcache` type3 manifest against a real client and
-  adjust key, entry, metadata/group/icon fields until the client requests the
-  generated tokens and accepts the returned server-cache bytes.
+- Validate the `openysm/server-cache` generated route against a real client
+  across format versions, especially older `.ysm` formats where the original
+  body is not reserialized to format 32.
 - Replace the empirical native cache timing with a stricter session state machine.
 - Track when each viewer has completed cache sync, then replay model state only after that viewer is ready.
 - Expand `id=4` entity-state fields beyond the minimal model/texture body if future YSM features require it.

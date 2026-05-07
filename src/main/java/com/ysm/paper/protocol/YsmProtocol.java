@@ -113,6 +113,18 @@ public final class YsmProtocol {
         return out.toByteArray();
     }
 
+    public static byte[] encodeMolangExecute(int[] entityIds, String expression) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(MOLANG_EXECUTE_ID);
+        int[] safeEntityIds = entityIds == null ? new int[0] : entityIds;
+        writeVarInt(out, safeEntityIds.length);
+        for (int entityId : safeEntityIds) {
+            writeVarInt(out, entityId);
+        }
+        writeUtf(out, expression == null ? "" : expression);
+        return out.toByteArray();
+    }
+
     public static int peekSubpacketId(byte[] payload) {
         if (payload.length == 0) {
             throw new YsmProtocolException("empty payload");

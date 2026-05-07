@@ -6,9 +6,12 @@ author: YSMParser contributors
 description: Paper-side Yes Steve Model protocol bridge prototype.
 commands:
   ysm:
-    description: Sync and manage YSM model cache distribution.
-    usage: /ysm <sync|status|models|diagnose>
+    description: Sync and manage YSM model/cache distribution with native YSM command compatibility.
+    usage: /ysm <sync|ping|auth|model|play|molang|admin>
     aliases: [paperysm]
+  ysmclient:
+    description: Compatibility shim for YSM client debug commands.
+    usage: /ysmclient <debug|molang|watch>
 permissions:
   paperysm.use:
     description: Allows players to request their own YSM cache sync.

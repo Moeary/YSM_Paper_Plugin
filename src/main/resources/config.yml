@@ -20,15 +20,15 @@ logging:
   # Writes per-viewer packet send lines plus a hex preview when /ysm apply
   # distributes an entity model-state update.
   packet-details: false
+  # Debug progress cadence for background cache generation. Even debug mode
+  # reports progress by interval instead of one line per model/chunk.
+  progress-interval-models: 32
   packet-hex-preview-bytes: 96
   raw-packet-hex-preview-bytes: 128
 
-# Optional local .ysm model reference directory. PaperYSM uses this mostly to
-# read animation/profile metadata for wheel actions; native cache sync still
-# works without these files. Relative paths are resolved under the plugin data
-# folder, usually plugins/PaperYSM/. In the repository test layout this points
-# at the Freesia worker's real model folder, not a junction shown to the client.
-models-dir: "../../../freesia-worker/config/yes_steve_model/custom"
+# Local .ysm model directory. Keep model files here; protocol/cache artifacts
+# live under cache/<channel> instead.
+models-dir: "models"
 scan-models-on-enable: true
 
 # Remember the last YSM model/texture each player selected and re-apply it
@@ -44,7 +44,7 @@ state:
 distribution:
   prepare-on-reload: false
   chunk-bytes: 24576
-  cache-dir: "cache/distribution"
+  cache-dir: "cache/openysm/distribution"
   # False keeps decrypted payloads in memory only. Enable for packet/native
   # comparisons on a controlled test server.
   write-cache-files: false
@@ -62,39 +62,54 @@ sync:
   # packets around client C2S id=2 replies, matching the Worker bootstrap.
   # Keep this disabled for normal servers.
   enable-raw-replay: false
-  raw-replay-dir: "captures/replay"
+  raw-replay-dir: "debug/replay"
   raw-replay-interval-ticks: 2
   raw-replay-handshake-timeout-ticks: 1500
   # Main runtime path: after a compatible 51/52 handshake, replay a
   # worker/Freesia-derived native cache bundle from
-  # captures/native-cache/<auto-native-cache-capture>. This is what makes the
-  # YSM client progress bar and server model picker appear.
-  auto-native-cache-on-handshake: true
+  # cache/<auto-native-cache-capture>. Legacy captures/native-cache/<source>
+  # is still accepted for old local fixtures.
+  auto-native-cache-on-handshake: false
   auto-native-cache-capture: "freesia-from-velocity"
   auto-native-cache-delay-ticks: 20
   # Native type5 send speed. OPs can change this online with
   # /ysm config speed <intervalTicks> <chunkBytes>.
   auto-native-cache-interval-ticks: 1
   auto-native-cache-chunk-bytes: 59926
-  # Research path: Java-generated cache from local .ysm files. Keep disabled
-  # for normal use; this is still useful when continuing the ysm-core
-  # reimplementation later.
-  auto-generated-cache-on-handshake: false
+  # Java-generated cache from local .ysm files. This is the Paper-only path
+  # that builds server-cache bytes without the FreesiaII worker.
+  auto-generated-cache-on-handshake: true
+  # Player-facing /ysm sync and join autosync send a catalog from the already
+  # generated OpenYSM server-cache index. Admins generate/update that cache
+  # with /ysm dist prewarm or /ysm dist incremental.
   auto-generated-cache-model: "all"
   auto-generated-cache-delay-ticks: 20
   auto-generated-cache-interval-ticks: 1
-  auto-generated-cache-chunk-bytes: 24576
-  # legacy keeps the current type3 body that reaches type4/type5 on test
-  # clients. keys sends ServerCacheKey/ClientCacheKey in type3 and encrypts
-  # type5 cache bodies with ServerCacheKey for protocol experiments.
-  auto-generated-cache-layout: "legacy"
-  # washed-zstd is the earlier experimental payload and is known to reach
-  # type5 but not register as a GUI model. headerless-v3/encrypted-v3 test the
-  # technical-report observation that server cache plaintext is closer to a
-  # headerless encrypted YSM model than to decompressed resource payloads.
-  auto-generated-cache-payload: "washed-zstd"
-  # Blank keeps stable cache tokens. Set a unique value on a controlled test
-  # client to force a fresh generated cache request/progress cycle.
+  auto-generated-cache-chunk-bytes: 65536
+  # Batch size for all/* generated cache requests; 0 sends all models in one
+  # prepare pass. Keep this small for low memory/CPU sync tests.
+  auto-generated-cache-max-models: 32
+  # Generated-cache type5 burst size. With 64 KiB chunks, 2 packets/tick is
+  # roughly 20-25 Mbps before overhead; raise only if your uplink has headroom.
+  auto-generated-cache-type5-packets-per-tick: 2
+  # Optional startup cache prewarm. This only creates/updates missing OpenYSM
+  # server-cache files under cache/openysm/server-cache; unchanged model files
+  # are skipped by the index. If sync-online-after-prewarm is true, online
+  # compatible clients receive one final full catalog after new cache files are
+  # generated.
+  auto-generated-cache-prewarm-on-startup: false
+  auto-generated-cache-prewarm-model: "all"
+  auto-generated-cache-prewarm-delay-ticks: 1200
+  auto-generated-cache-sync-online-after-prewarm: false
+  # openysm sends the OpenYSM-style type3 body:
+  # cache folder, ServerCacheKey, ClientCacheKey, model hashes, ids, flags,
+  # and pack terminators.
+  auto-generated-cache-layout: "openysm"
+  # server-cache sends YSM-zstd-compressed server-cache payloads encrypted with
+  # ServerCacheKey. The old guessed payloads remain accepted by debug commands.
+  auto-generated-cache-payload: "server-cache"
+  # Blank keeps stable OpenYSM cache tokens. Set a unique value on a controlled
+  # test client to force a fresh generated cache request/progress cycle.
   auto-generated-cache-token-salt: ""
   # Experimental native/raw sync probe. When enabled, PaperYSM sends one
   # generated S2C id=1 type=1 bootstrap packet after handshake so we can see
@@ -106,11 +121,11 @@ sync:
   experimental-bootstrap-mode: "zero"
   experimental-probe-interval-ticks: 8
 
-# Capture C2S id=2 raw/native packets from YSM clients. These captures are used
-# to finish the no-worker model distribution protocol.
+# Capture C2S id=2 raw/native packets from YSM clients. Keep disabled on
+# production servers; these files are only useful for protocol debugging.
 capture:
-  client-raw-packets: true
-  raw-packet-dir: "captures/raw"
+  client-raw-packets: false
+  raw-packet-dir: "debug/raw-packets"
 
 native:
   # Future no-worker path. When enabled, this will load our reimplementation of

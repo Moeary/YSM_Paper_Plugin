@@ -15,3 +15,7 @@ Desktop.ini
 # Runtime logs and generated Minecraft state
 test-server/*
 references/*
+
+# AI
+.claude/
+.codex/

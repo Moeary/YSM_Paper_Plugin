@@ -3,13 +3,13 @@ param(
     [ValidateSet("status", "auth-only", "none", "freesia", "freesia-fixture", "fixture", "generated", "paper-generated", "paper", "raw-replay", "bootstrap")]
     [string]$Mode = "status",
 
-    [string]$Model = "all",
+    [string]$Model = "saved",
     [string]$Capture = "freesia-from-velocity",
     [string]$TokenSalt = "",
-    [ValidateSet("legacy", "keys")]
-    [string]$GeneratedLayout = "legacy",
-    [ValidateSet("washed-zstd", "headerless-v3", "encrypted-v3")]
-    [string]$GeneratedPayload = "washed-zstd",
+    [ValidateSet("openysm", "legacy", "keys")]
+    [string]$GeneratedLayout = "openysm",
+    [ValidateSet("server-cache", "washed-zstd", "headerless-v3", "encrypted-v3")]
+    [string]$GeneratedPayload = "server-cache",
     [int]$IntervalTicks = 0,
     [int]$ChunkBytes = 0,
     [switch]$FreshToken,
@@ -85,6 +85,7 @@ $nativeChunk = 59926
 $generatedInterval = 1
 $generatedChunk = 24576
 $bootstrapMode = "zero"
+$writeCacheFiles = $false
 
 switch ($modeKey) {
     "auth-only" {
@@ -163,10 +164,11 @@ debug: false
 logging:
   model-scan-details: false
   packet-details: false
+  progress-interval-models: 32
   packet-hex-preview-bytes: 96
   raw-packet-hex-preview-bytes: 128
 
-models-dir: "../../../freesia-worker/config/yes_steve_model/custom"
+models-dir: "models"
 scan-models-on-enable: true
 
 state:
@@ -176,14 +178,14 @@ state:
 distribution:
   prepare-on-reload: false
   chunk-bytes: 24576
-  cache-dir: "cache/distribution"
-  write-cache-files: false
+  cache-dir: "cache/openysm/distribution"
+  write-cache-files: $(Bool-Text $writeCacheFiles)
 
 sync:
   send-authorized-models-on-handshake: true
   warn-missing-native-sync-on-handshake: true
   enable-raw-replay: $(Bool-Text $enableRawReplay)
-  raw-replay-dir: "captures/replay"
+  raw-replay-dir: "debug/replay"
   raw-replay-interval-ticks: $rawInterval
   raw-replay-handshake-timeout-ticks: 1500
   auto-native-cache-on-handshake: $(Bool-Text $autoNative)
@@ -196,6 +198,12 @@ sync:
   auto-generated-cache-delay-ticks: 20
   auto-generated-cache-interval-ticks: $generatedInterval
   auto-generated-cache-chunk-bytes: $generatedChunk
+  auto-generated-cache-max-models: 32
+  auto-generated-cache-type5-packets-per-tick: 2
+  auto-generated-cache-prewarm-on-startup: false
+  auto-generated-cache-prewarm-model: "all"
+  auto-generated-cache-prewarm-delay-ticks: 1200
+  auto-generated-cache-sync-online-after-prewarm: false
   auto-generated-cache-layout: "$GeneratedLayout"
   auto-generated-cache-payload: "$GeneratedPayload"
   auto-generated-cache-token-salt: "$TokenSalt"
@@ -204,8 +212,8 @@ sync:
   experimental-probe-interval-ticks: 8
 
 capture:
-  client-raw-packets: true
-  raw-packet-dir: "captures/raw"
+  client-raw-packets: false
+  raw-packet-dir: "debug/raw-packets"
 
 native:
   enabled: false

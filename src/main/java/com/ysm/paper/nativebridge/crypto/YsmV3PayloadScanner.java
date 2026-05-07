@@ -483,7 +483,7 @@ final class YsmV3PayloadScanner {
     }
 
     private static void skipYsmJson(YsmByteReader reader, int format, Counts counts) {
-        reader.readString();
+        counts.modelHash = reader.readString();
         if (reader.readVarInt() == 0) {
             counts.profile = YsmModelProfile.EMPTY;
             return;
@@ -668,6 +668,7 @@ final class YsmV3PayloadScanner {
         private int functions;
         private int languages;
         private int subEntities;
+        private String modelHash = "";
         private YsmModelProfile profile = YsmModelProfile.EMPTY;
 
         private ScanResult toResult(int parsedBytes, int totalBytes) {
@@ -690,6 +691,7 @@ final class YsmV3PayloadScanner {
                     functions,
                     languages,
                     subEntities,
+                    modelHash,
                     profile);
         }
     }
@@ -713,6 +715,7 @@ final class YsmV3PayloadScanner {
             int functions,
             int languages,
             int subEntities,
+            String modelHash,
             YsmModelProfile profile) {
         boolean consumedAll() {
             return parsedBytes == totalBytes;
@@ -731,6 +734,7 @@ final class YsmV3PayloadScanner {
                     + ", avatars=" + avatars
                     + ", sounds=" + sounds
                     + ", subEntities=" + subEntities
+                    + ", modelHash=" + (modelHash == null || modelHash.isBlank() ? "missing" : modelHash)
                     + ", parsed=" + parsedBytes + "/" + totalBytes;
             if (trailingBytes() > 0) {
                 summary += ", trailing=" + trailingBytes();

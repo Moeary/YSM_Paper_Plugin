@@ -22,7 +22,12 @@ public final class YsmDistributionProbeMain {
 
         System.out.println("ysmDistributionInput=" + options.input().toAbsolutePath());
         System.out.println("ysmDistributionPrepared=" + repository.prepared().size());
-        System.out.println("ysmDistributionFailed=" + repository.failures().size());
+        long skipped = repository.failures().stream()
+                .filter(YsmDistributionProbeMain::isSkippableFailure)
+                .count();
+        long failed = repository.failures().size() - skipped;
+        System.out.println("ysmDistributionSkipped=" + skipped);
+        System.out.println("ysmDistributionFailed=" + failed);
         System.out.println("ysmDistributionDecompressedBytes=" + repository.totalDecompressedBytes());
         System.out.println("ysmDistributionTransferBytes=" + repository.totalTransferBytes());
         System.out.println("ysmDistributionChunks=" + repository.totalChunkCount());
@@ -31,21 +36,30 @@ public final class YsmDistributionProbeMain {
                     + " format=" + model.format()
                     + " decompressedBytes=" + model.decompressedBytes()
                     + " zstdBytes=" + model.washedZstdBytes()
+                    + " serverCacheYsmZstdBytes=" + model.serverCacheYsmZstdBytes()
                     + " transfer=" + model.transferKind()
                     + "/" + model.transferBytes()
                     + " chunks=" + model.chunkCount()
+                    + " modelHash=" + model.modelHash()
                     + " payloadSha256=" + model.payloadSha256().substring(0, 16)
+                    + " serverCacheSha256=" + model.serverCacheYsmZstdSha256().substring(0, 16)
                     + " transferSha256=" + model.transferSha256().substring(0, 16)
                     + " summary={" + model.summary() + "}");
         }
         for (YsmDistributionRepository.Failure failure : repository.failures()) {
-            System.out.println("FAILED " + failure.modelId() + " file=" + failure.file()
+            String status = isSkippableFailure(failure) ? "SKIPPED" : "FAILED";
+            System.out.println(status + " " + failure.modelId() + " file=" + failure.file()
                     + " reason=" + failure.message());
         }
 
-        if (!repository.failures().isEmpty()) {
+        if (failed > 0) {
             System.exit(2);
         }
+    }
+
+    private static boolean isSkippableFailure(YsmDistributionRepository.Failure failure) {
+        String message = failure.message();
+        return message != null && message.startsWith("legacy YSM ");
     }
 
     private static List<YsmModelRepository.Entry> loadEntries(Path input, int limit) throws Exception {

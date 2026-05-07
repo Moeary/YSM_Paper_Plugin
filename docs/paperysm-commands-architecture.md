@@ -118,9 +118,9 @@ README 里推荐的主路径基本也是这一组：
 
 ### 3. 模型仓库扫描
 
-`models-dir` 在本地测试配置中指向 Freesia worker 的真实模型目录
-`test-server/freesia-worker/config/yes_steve_model/custom`，不要用 junction
-把外部大目录暴露给客户端模型浏览器。OP 可以在线修改并立即重扫：
+`models-dir` 在本地测试配置中指向 `plugins/PaperYSM/models`。模型目录只放
+`.ysm` 模型；FreesiaII fixture 和 Paper 生成的 type3/type5 cache 统一放在
+`plugins/PaperYSM/cache/<channel>`。OP 可以在线修改并立即重扫：
 
 ```text
 /ysm config modeldir <path>
@@ -144,7 +144,8 @@ README 里推荐的主路径基本也是这一组：
 - 保存 decompressed payload SHA-256 和 washed-zstd SHA-256。
 - 当前真正用于 transfer 的是 washed-zstd payload，不是直接把完整 decompressed payload 切块。
 - 按 `distribution.chunk-bytes` 计算 chunk。
-- 默认只在内存保存；`distribution.write-cache-files: true` 时才写 `cache/distribution`，用于受控对比。
+- 默认只在内存保存；`distribution.write-cache-files: true` 时才写
+  `cache/openysm/distribution`，用于受控对比。
 
 注意：prepared package 不是客户端能直接消费的 native cache。它是未来本地生成 native cache 的 staging layer。当前客户端要出现下载进度和 roulette entry，仍依赖 Freesia-derived native-cache fixture 或未来补全的本地生成器。
 
@@ -160,7 +161,7 @@ README 里推荐的主路径基本也是这一组：
 它从插件数据目录下读取：
 
 ```text
-captures/native-cache/<captureName>/
+cache/<captureName>/
   type3-body.bin
   cache-map.tsv
   server-cache.bin 或 cache-map.tsv 指向的 server-cache 文件

@@ -1,0 +1,22 @@
+[workspace]
+name = "paper-ysm"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[dependencies]
+openjdk = ">=22,<23"
+gradle = ">=8.8,<9"
+python = ">=3.11,<3.13"
+
+[tasks]
+build = "gradle build"
+jar = "gradle jar"
+check = "gradle build cryptoSelfTest rawPacketSelfTest"
+crypto-test = "gradle cryptoSelfTest"
+raw-test = "gradle rawPacketSelfTest"
+deploy-direct = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-direct-paper.ps1", depends-on = ["build"] }
+server-direct = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-direct-paper.ps1"
+run-direct = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-direct-paper.ps1", depends-on = ["deploy-direct"] }
+prepare-models = "gradle prepareYsmModels -PysmPrepareInput=test-server/direct-paper/plugins/PaperYSM/models"
+prepare-models-cache = "gradle prepareYsmModels -PysmPrepareInput=test-server/direct-paper/plugins/PaperYSM/models -PysmPrepareWriteCache=true"
+probe-models = "gradle probeYsmModels -PysmProbeInput=test-server/direct-paper/plugins/PaperYSM/models"

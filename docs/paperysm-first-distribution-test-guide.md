@@ -117,13 +117,13 @@ freesia-latest
 它需要放在插件数据目录：
 
 ```text
-plugins/PaperYSM/captures/native-cache/freesia-latest
+plugins/PaperYSM/cache/freesia-latest
 ```
 
 本仓库的本地测试服已经带有这份素材：
 
 ```text
-test-server/direct-paper/plugins/PaperYSM/captures/native-cache/freesia-latest
+test-server/direct-paper/plugins/PaperYSM/cache/freesia-latest
 ```
 
 如果你把插件拿到新的测试服，需要同时带上这份测试素材。否则 `/ysm dist nativecache ...` 会提示找不到或加载失败。
@@ -296,7 +296,7 @@ sync:
 检查测试素材是否存在：
 
 ```text
-plugins/PaperYSM/captures/native-cache/freesia-latest
+plugins/PaperYSM/cache/freesia-latest
 ```
 
 这份目录里至少需要包含 native-cache replay 所需的 `type3-body.bin`、`cache-map.tsv` 和对应 cache 数据。

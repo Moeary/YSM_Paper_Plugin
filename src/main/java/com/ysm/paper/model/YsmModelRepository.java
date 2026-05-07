@@ -63,6 +63,7 @@ public final class YsmModelRepository {
                         result.size(),
                         result.decompressedBytes(),
                         result.payloadTrailingBytes(),
+                        result.modelHash(),
                         result.payloadSummary(),
                         result.profile()));
             } catch (Exception ex) {
@@ -97,6 +98,7 @@ public final class YsmModelRepository {
             long size,
             int decompressedBytes,
             int payloadTrailingBytes,
+            String modelHash,
             String summary,
             YsmModelProfile profile) {
     }

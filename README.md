@@ -45,10 +45,12 @@ material until it is no longer needed.
 
 ## Build
 
-Requires JDK 21+.
+Use Pixi from the repository root. Pixi provides the Gradle/JDK toolchain used
+by the local tasks.
 
 ```powershell
-gradle build
+pixi run build
+pixi run check
 ```
 
 The plugin jar is written to:
@@ -57,16 +59,22 @@ The plugin jar is written to:
 build/libs/paper-ysm-0.1.0-SNAPSHOT.jar
 ```
 
-For the local direct Paper test server, copy the jar into
-`test-server/direct-paper/plugins/` after building. The existing local test
-servers already contain the current working jar snapshot.
+For the local direct Paper test server:
+
+```powershell
+pixi run deploy-direct
+pixi run run-direct
+```
+
+`run-direct` builds, deploys the jar, and starts the direct Paper server in the
+current terminal. `server-direct` only starts the server.
 
 ## Test Servers
 
 Use these entry points from the repository root:
 
-```bat
-scripts\start-direct-paper.bat
+```powershell
+pixi run run-direct
 scripts\start-freesiaii-stack.bat
 ```
 
@@ -136,19 +144,21 @@ against a local `.ysm`:
 gradle analyzeNativeCacheFixture -PysmNativeCacheFilter="拉菲Ⅱ/拉菲Ⅱ_v1.2.ysm" -PysmNativeCacheLocalModel="test-server/direct-paper/plugins/PaperYSM/models/拉菲Ⅱ/拉菲Ⅱ_v1.2.ysm"
 ```
 
-The current working native-cache replay source is `freesia-from-velocity`. It is built
-from captured FreesiaII cache material and contains the manifest plus cache
-entries needed by the client progress bar and server model selection.
+The current working FreesiaII replay source is `cache/freesia-from-velocity`.
+It is built from captured FreesiaII cache material and contains the manifest
+plus cache entries needed by the client progress bar and server model
+selection. The Paper-generated route writes its test artifacts under
+`cache/openysm`.
 
 ## Model Directory For Animations
 
-PaperYSM uses the native-cache fixture for model distribution, but wheel and
-nested-wheel animation mapping still comes from decoded `.ysm` profiles. The
-direct Paper test server now points `models-dir` at the Freesia worker's real
-model folder:
+PaperYSM keeps model files under `plugins/PaperYSM/models`. Native cache
+fixtures and generated type3/type5 artifacts live under `plugins/PaperYSM/cache/<channel>`.
+Wheel and nested-wheel animation mapping still comes from decoded `.ysm`
+profiles in the model directory:
 
 ```text
-test-server\freesia-worker\config\yes_steve_model\custom
+plugins\PaperYSM\models
 ```
 
 Do not expose large external model libraries through junctions/symlinks. The

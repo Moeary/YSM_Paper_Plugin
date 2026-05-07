@@ -1,6 +1,8 @@
 package com.ysm.paper.nativebridge.crypto;
 
+import io.airlift.compress.zstd.ZstdOutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.security.SecureRandom;
 import java.util.Arrays;
 
@@ -51,6 +53,29 @@ public final class YsmCrypto {
         byte[] afterXor = mt19937Xor(encryptedBody, currentKey);
         byte[] plain = xChaCha(afterXor, currentKey, 30);
         return new DecryptedPacket(plain, nextKey);
+    }
+
+    public static long[] calculateModelHashes(String modelHash, byte[] serverKey) {
+        requireKey(serverKey);
+        String safeHash = modelHash == null ? "" : modelHash;
+        byte[] xored = mt19937Xor(safeHash.getBytes(java.nio.charset.StandardCharsets.UTF_8), serverKey);
+        return new long[] {
+                CityHash64.hashWithSeed(xored, YsmSeeds.CACHE_VERIFICATION),
+                CityHash64.hashWithSeed(xored, YsmSeeds.CACHE_DECRYPTION)
+        };
+    }
+
+    public static byte[] ysmZstdCompress(byte[] clearText) {
+        byte[] input = clearText == null ? new byte[0] : clearText;
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(128, input.length / 2));
+            try (ZstdOutputStream zstd = new ZstdOutputStream(out)) {
+                zstd.write(input);
+            }
+            return obfuscateYsmZstd(out.toByteArray());
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("YSM zstd compression failed: " + ex.getMessage(), ex);
+        }
     }
 
     public static long[] deriveHashFromFileName(String fileName, byte[] runtimeKey) {
@@ -140,6 +165,17 @@ public final class YsmCrypto {
         return encryptCachedModel(payload, format, fileHashA, fileHashB, runtimeKey, new byte[0]);
     }
 
+    public static long cachedModelBodyVerificationHash(byte[] cachedModel) {
+        if (cachedModel == null || cachedModel.length < Long.BYTES) {
+            throw new IllegalArgumentException("Cached model is too short");
+        }
+        return CityHash64.hashWithSeed(
+                cachedModel,
+                0,
+                cachedModel.length - Long.BYTES,
+                YsmSeeds.CACHE_VERIFICATION);
+    }
+
     public static byte[] encryptCachedModel(
             byte[] payload,
             int format,
@@ -182,6 +218,72 @@ public final class YsmCrypto {
                         ^ fileHashA
                         ^ fileHashB);
         return out;
+    }
+
+    private static byte[] obfuscateYsmZstd(byte[] standardZstd) {
+        if (standardZstd == null || standardZstd.length < 5) {
+            throw new IllegalArgumentException("Zstd frame is too short");
+        }
+        byte[] data = Arrays.copyOf(standardZstd, standardZstd.length);
+        if (LittleEndian.readInt(data, 0) != 0xfd2fb528) {
+            throw new IllegalArgumentException("Not a standard Zstd frame");
+        }
+
+        int frameHeaderSize = calculateZstdFrameHeaderSize(data[4] & 0xff);
+        int offset = 4 + frameHeaderSize;
+        while (offset + 3 <= data.length) {
+            int cBlockHeader = (data[offset] & 0xff)
+                    | ((data[offset + 1] & 0xff) << 8)
+                    | ((data[offset + 2] & 0xff) << 16);
+            int lastBlock = cBlockHeader & 1;
+            int blockTypeStd = (cBlockHeader >>> 1) & 3;
+            int cSize = cBlockHeader >>> 3;
+
+            int blockDataSize = blockTypeStd == 1 ? 1 : cSize;
+            int blockTypeYsm = switch (blockTypeStd) {
+                case 0 -> 3;
+                case 1 -> 1;
+                case 2 -> 0;
+                case 3 -> 2;
+                default -> throw new IllegalStateException("Unknown Zstd block type");
+            };
+
+            int rawSize = cSize ^ 0xd4e9;
+            data[offset] = (byte) ((lastBlock << 7) | (blockTypeYsm << 5) | ((rawSize >>> 16) & 0x1f));
+            data[offset + 1] = (byte) rawSize;
+            data[offset + 2] = (byte) (rawSize >>> 8);
+
+            offset += 3 + blockDataSize;
+            if (offset > data.length) {
+                throw new IllegalArgumentException("Zstd block exceeds frame");
+            }
+            if (lastBlock == 1) {
+                break;
+            }
+        }
+        return data;
+    }
+
+    private static int calculateZstdFrameHeaderSize(int fhd) {
+        boolean singleSegment = ((fhd >>> 5) & 1) == 1;
+
+        int dictIdSize = switch (fhd & 3) {
+            case 0 -> 0;
+            case 1 -> 1;
+            case 2 -> 2;
+            case 3 -> 4;
+            default -> throw new IllegalStateException("unreachable dict id size");
+        };
+
+        int fcsSize = switch ((fhd >>> 6) & 3) {
+            case 0 -> singleSegment ? 1 : 0;
+            case 1 -> 2;
+            case 2 -> 4;
+            case 3 -> 8;
+            default -> throw new IllegalStateException("unreachable frame content size");
+        };
+
+        return 1 + (singleSegment ? 0 : 1) + dictIdSize + fcsSize;
     }
 
     static byte[] mt19937Xor(byte[] data, byte[] key) {

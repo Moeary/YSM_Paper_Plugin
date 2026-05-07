@@ -225,7 +225,7 @@ def print_status(_args: argparse.Namespace) -> None:
     print(f"worker custom: {WORKER_CUSTOM_DIR}")
     print(f"worker cache: {WORKER_CACHE_DIR}")
     print(f"paper fixture: {PAPER_FIXTURE_DIR}")
-    print(f"paper model ref config should point to: ../../../freesia-worker/config/yes_steve_model/custom")
+    print("paper model ref config should point to: models")
     for label, path in (
         ("direct-paper models", PAPER_PLUGIN_DIR / "models"),
         ("worker 游戏IP分类", WORKER_CUSTOM_DIR / "游戏IP分类"),

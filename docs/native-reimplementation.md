@@ -97,14 +97,19 @@ Rendering native calls are intentionally out of scope for Paper.
    Done for V3 `.ysm` archives using washed-zstd chunks and decompressed
    SHA-256 validation.
 6. Reconstruct the native raw packet envelope and key-carrying packet types.
-   Started in `YsmRawPacketCodec`: plaintext padding header, packet type VarInt,
-   type `1`/`2` keys, type `3` metadata skeleton, type `4` marker, and a
-   body-only crypto self-test. The cached-model encryption/decryption inverse is
-   now implemented in Java, so generated type5 payloads can be built without a
-   Freesia cache file once the type3 manifest generator is complete.
+   `YsmRawPacketCodec` handles plaintext padding, packet type VarInt,
+   type `1`/`2` keys, OpenYSM-style type `3`, type `4` requests, and type `5`
+   chunks. The generated route now derives model hashes from local `.ysm`
+   metadata, builds ServerCacheKey-encrypted server-cache bodies, and sends
+   them without a Freesia cache file. Runtime generation is scheduled off the
+   Paper main thread and automatic join sync defaults to the player's saved
+   model instead of preparing every repository entry.
 7. Use captured C2S `id=2` packets to finish the native/raw model cache
    request/response sequence.
-8. Replace cached Worker bodies with locally generated bodies.
+8. Replace cached Worker bodies with locally generated bodies. The first
+   Paper-only implementation is in place via the `openysm/server-cache`
+   generated-cache route; real-client validation should focus on older formats
+   and models that require reserialization to format 32.
 
 ## Practical Milestones
 

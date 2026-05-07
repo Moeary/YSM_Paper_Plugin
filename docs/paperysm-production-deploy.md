@@ -1,116 +1,141 @@
-# PaperYSM 正式服迁移清单
+# PaperYSM 正式服部署清单
 
-这份清单针对“Velocity 群组服里移除 FreesiaII，改成 Paper 后端直接跑
-PaperYSM”的部署方式。
+这份清单面向当前 Paper-only OpenYSM cache 路线：模型放 `models/`，插件自己生成
+`cache/openysm/server-cache/`，玩家进服自动同步或手动 `/ysm sync`。
 
-## 要复制的文件
+## 目录说明
 
-目标 Paper 服务器根目录下需要这些文件：
-
-```text
-plugins/
-  paper-ysm-0.1.0-SNAPSHOT.jar
-  PaperYSM/
-    config.yml
-    captures/native-cache/<source>/
-      type3-body.bin
-      type1-padding.txt
-      type3-padding.txt
-      cache-map.tsv
-      server-cache/**
-    models/**              # 可选，用于轮盘/多级动画映射
-    player-models.yml      # 可选，用于保留本地测试服的玩家选择记录
-```
-
-`captures/native-cache/<source>` 必须来自真实 Velocity/Freesia 捕获导出。
-如果 `export-report.tsv` 里大量模型没有 file 或 `gaps` 不为 0，这份 fixture
-只能服务已经有本地缓存的客户端，不适合搬到正式服。
-
-可以用打包脚本生成一个可复制目录：
-
-```powershell
-gradle build
-scripts\package-paper-deploy.bat -Fixture freesia-from-velocity -IncludeModels -Force
-```
-
-输出目录默认是：
+`plugins/PaperYSM` 里建议保留这些：
 
 ```text
-build\paperysm-deploy
+plugins/PaperYSM/
+  config.yml                  # 必需
+  models/                     # 必需，本地 .ysm 模型源
+  cache/openysm/server-cache/ # 建议复制，已经生成好的 OpenYSM cache
+  player-models.yml           # 可选，玩家上次选择的模型记录
 ```
 
-把里面的 `plugins` 目录复制到正式 Paper 服务器根目录即可。
+这些不建议带到正式服：
 
-## 正式服 config.yml 建议
+```text
+plugins/PaperYSM/captures/    # 旧调试抓包目录
+plugins/PaperYSM/debug/       # 新调试抓包/重放目录，生产服默认不会生成
+config.yml.bak-*              # 本地测试备份
+cache/openysm/DD12_.../       # 临时同步会话目录，正常会自动清理
+cache/openysm/distribution/   # 研发用 staging cache，生产服通常不需要
+```
 
-正式服建议把模型参考目录放在插件数据目录下：
+如果不复制 `cache/openysm/server-cache/`，正式服也能用
+`/ysm admin cache all` 重新生成，但首次生成会吃 CPU 和磁盘 IO。
+
+## 推荐配置
+
+30 Mbps 上行建议先用保守传输速度：
 
 ```yaml
-models-dir: models
-scan-models-on-enable: true
 debug: false
+scan-models-on-enable: true
 
 logging:
   model-scan-details: false
   packet-details: false
+  progress-interval-models: 32
 
 sync:
-  send-authorized-models-on-handshake: true
-  auto-native-cache-on-handshake: true
-  auto-native-cache-capture: freesia-from-velocity
-  auto-native-cache-delay-ticks: 20
-  auto-native-cache-interval-ticks: 1
-  auto-native-cache-chunk-bytes: 59926
+  auto-generated-cache-on-handshake: true
+  auto-generated-cache-model: all
+  auto-generated-cache-interval-ticks: 1
+  auto-generated-cache-chunk-bytes: 65536
+  auto-generated-cache-max-models: 32
+  auto-generated-cache-type5-packets-per-tick: 2
+  auto-generated-cache-prewarm-on-startup: false
+  auto-generated-cache-sync-online-after-prewarm: false
 
 capture:
   client-raw-packets: false
 ```
 
-`models-dir` 只影响动画映射和模型元数据扫描。即使没有 `.ysm` 文件，只要
-native-cache fixture 完整，模型同步仍然能跑；但部分轮盘/多级动作可能无法解析
-成模型内真实动画名。
+`scan-models-on-enable` 现在是异步扫描，不会卡住开服主流程。模型库很大且你想完全手动控制时，可以改成 `false`，开服后由 OP 执行 `/ysm admin scan`。
 
-## Velocity/FreesiaII 该怎么删
+## 管理员流程
 
-正式运行时不需要 FreesiaII、Freesia worker，也不需要 ysm-sniffer。
-
-1. 停止 Velocity 和 Paper 后端。
-2. Velocity `plugins` 里禁用或移走 `Freesia-*.jar`。
-3. 如果只为了捕获装过 `ysm-sniffer-*.jar`，正式服也移走。
-4. `packetevents`、`multilogin` 等其他插件是否保留取决于你的群组服本身。
-5. Paper 后端只保留 `paper-ysm-*.jar` 和 `plugins/PaperYSM` 数据目录。
-6. Freesia worker 服务器不需要跟正式服一起启动。
-
-Velocity 一般会透传现代 plugin message，PaperYSM 在后端 Paper 注册
-`yes_steve_model:2_6_0` channel 后即可工作。
-
-## 上线验证
-
-玩家进入正式 Paper 后端后：
+首次部署或模型大规模更新：
 
 ```text
-/ysm status
-/ysm sync
-/ysm models
+/ysm admin scan
+/ysm admin cache all
+/ysm admin syncall all
 ```
 
-正常现象：
+日常新增或替换少量模型：
 
-- `status` 里玩家是 compatible，协议是 `2.6.0`。
-- 自动同步或 `/ysm sync` 会触发客户端 YSM 同步进度条。
-- 同步后玩家能在 YSM UI 看到服务器/cache-local 模型。
-- 选择模型后，其他已同步的 YSM 玩家能看到模型状态。
+```text
+/ysm admin scan
+/ysm admin incremental all
+```
 
-如果玩家看不到新增模型，先检查：
+强制让所有在线玩家重新拿最新目录：
 
-- `plugins/PaperYSM/captures/native-cache/<source>/cache-map.tsv` 是否有对应行。
-- `server-cache` 文件是否存在且路径和 `cache-map.tsv` 一致。
-- 捕获导出的 `export-report.tsv` 里该模型是否 `gaps=0` 且 file 非空。
-- 玩家客户端是否完成 `/ysm sync`。
+```text
+/ysm admin fullsync all
+```
 
-## 内存和流量
+只发送已有 cache 目录，不重新生成：
 
-PaperYSM replay 当前是 disk-backed：发送 type5 时按 chunk 读取 cache 文件，
-不会一次把几 GB server-cache 全塞进单个玩家会话内存。但首次同步会产生真实
-下载流量，模型库越大，客户端首次同步越久。正式服可以把
-`auto-native-cache-chunk-bytes` 调小一点换稳定性，或调大一点换速度。
+```text
+/ysm admin syncall all
+```
+
+30 Mbps 上行如果玩家同步时卡顿，可以继续降速：
+
+```text
+/ysm admin speed 65536 1 1
+```
+
+如果带宽很空，再尝试：
+
+```text
+/ysm admin speed 65536 3 1
+```
+
+## DriveBackupV2 排除
+
+DriveBackupV2 的 `backup-list` 支持 `blacklist` glob。备份 `plugins` 时建议排除 PaperYSM 的大目录，只保留配置和玩家状态：
+
+```yaml
+backup-list:
+  - path: "plugins"
+    format: "'Backup-plugins-'yyyy-M-d--HH-mm'.zip'"
+    create: true
+    blacklist:
+      - "PaperYSM/models/**"
+      - "PaperYSM/cache/**"
+      - "PaperYSM/debug/**"
+      - "PaperYSM/captures/**"
+```
+
+改完 DriveBackupV2 配置后执行：
+
+```text
+/drivebackup reloadconfig
+```
+
+这样云备份不会上传几 GB 模型/cache；`PaperYSM/config.yml` 和
+`PaperYSM/player-models.yml` 仍会进插件备份。
+
+## Velocity
+
+Velocity 会转发客户端到后端 Paper 的 custom payload/plugin message，所以
+PaperYSM 可以放在后端 Paper 上跑。它不会帮你缓存或减少模型流量：数据仍然是
+后端 Paper -> Velocity -> 玩家。如果 Velocity 和 Paper 不在同一台机器，还要计算
+后端到 Velocity 的内网/公网带宽。
+
+## 给玩家的说明
+
+玩家只需要记住：
+
+```text
+/ysm sync
+```
+
+进服会自动同步；如果模型列表没刷新、刚换电脑、刚清过客户端缓存，就手动执行一次。
