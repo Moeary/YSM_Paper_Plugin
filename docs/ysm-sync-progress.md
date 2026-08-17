@@ -55,7 +55,12 @@ Implemented native cache replay:
   default is 32 models per batch, 64 KiB chunks, 2 chunks per tick.
   OpenYSM ServerCacheKey/ClientCacheKey are persisted under
   `cache/openysm/index.properties`, so later `all` runs can be incremental
-  against cache the client already has. Generated server-cache blobs are also
+  against cache the client already has. The client cache has no TTL: it remains
+  valid across Java client restarts while the cache folder, client key, model
+  display hash, and verification footer stay unchanged. Alias-v3 keeps shared
+  physical server-cache bodies but rewrites each streamed verification footer
+  with the advertised display hash, so the client's on-disk cache validates on
+  its next launch. Generated server-cache blobs are also
   indexed under `cache/openysm/server-cache`, so `/ysm dist status` can report
   how many cache files survived a forced stop. V1/V2 legacy `.ysm` shells are
   unpacked as folder resources and serialized as OpenYSM server-cache format
@@ -94,16 +99,17 @@ flowchart TD
     I --> J["S2C id=1 native type3 manifest/body"]
     J --> K["C2S id=2 native type4 token request"]
     K --> L{"Token count"}
-    L -- "0" --> M["Cache already present; replay known id=4 states"]
+    L -- "0" --> M["Cache already present; mark viewer cache-ready"]
     L -- ">0" --> N["Map tokens through cache-map.tsv"]
     N --> O["S2C id=1 native type5 chunks"]
-    O --> P["Replay known id=4 states after cache stream"]
-    M --> Q["Client can select model and wheel animations"]
-    P --> Q
+    O --> P["Mark viewer cache-ready after cache stream"]
+    M --> V["Replay known id=4 states to ready viewer only"]
+    P --> V
+    V --> Q["Client can select model and wheel animations"]
     Q --> R["Client id=5 model selection"]
-    R --> S["PaperYSM broadcasts id=4 model state"]
+    R --> S["PaperYSM broadcasts id=4 model state to cache-ready viewers"]
     Q --> T["Client id=7 wheel animation"]
-    T --> U["PaperYSM broadcasts id=21 player-state modelSwitch"]
+    T --> U["PaperYSM broadcasts id=21 player-state modelSwitch to cache-ready viewers"]
 ```
 
 ## Differences From FreesiaII
@@ -205,7 +211,7 @@ server-cache data derived from the local `.ysm` archive.
 - Validate the `openysm/server-cache` generated route against a real client
   across format versions, especially older `.ysm` formats where the original
   body is not reserialized to format 32.
-- Replace the empirical native cache timing with a stricter session state machine.
-- Track when each viewer has completed cache sync, then replay model state only after that viewer is ready.
+- Replace the remaining empirical native cache timing with a stricter session state machine if a client-side completion acknowledgement is identified.
+- Keep validating the cache-ready viewer gate against OpenYSM and official YSM so id=4/id=21 state remains delayed until the viewer can safely resolve model cache.
 - Expand `id=4` entity-state fields beyond the minimal model/texture body if future YSM features require it.
 - Keep validating wheel animation action/name mapping against more FreesiaII captures.

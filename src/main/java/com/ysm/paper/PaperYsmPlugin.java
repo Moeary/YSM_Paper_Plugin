@@ -103,7 +103,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
     private static final String GENERATED_CACHE_OPENYSM_INDEX_FILE = "index.properties";
     private static final String GENERATED_CACHE_SERVER_ROOT = "cache/" + GENERATED_CACHE_OPENYSM_CHANNEL + "/server-cache";
     private static final String GENERATED_CACHE_SERVER_INDEX_FILE = "index.tsv";
-    private static final String GENERATED_CACHE_TOKEN_VERSION = "openysm-alias-v2";
+    private static final String GENERATED_CACHE_TOKEN_VERSION = "openysm-alias-v3";
     private static final long GENERATED_CACHE_OPENYSM_CLIENT_KEY_SEED = 114514L;
     private static final int DEFAULT_AUTO_GENERATED_CACHE_MAX_MODELS = 32;
     private static final int DEFAULT_AUTO_GENERATED_CACHE_CHUNK_BYTES = 65536;
@@ -126,6 +126,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
     private final Map<UUID, NativeSyncState> nativeSyncStates = new ConcurrentHashMap<>();
     private final Map<UUID, ReportNativeSession> reportNativeSessions = new ConcurrentHashMap<>();
     private final Map<UUID, NativeCacheReplaySession> nativeCacheReplaySessions = new ConcurrentHashMap<>();
+    private final Set<UUID> modelStateReadyViewers = ConcurrentHashMap.newKeySet();
     private final Map<UUID, GeneratedCacheBatchQueue> generatedCacheBatchQueues = new ConcurrentHashMap<>();
     private final Map<UUID, String> playerNativeCacheSources = new ConcurrentHashMap<>();
     private final Map<UUID, CopyOnWriteArrayList<YsmNativeSyncPrototype.KeyCandidate>> nativeRecentDecodeKeys =
@@ -249,6 +250,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         nativeSyncGapWarnings.clear();
         nativeSyncStates.clear();
         reportNativeSessions.clear();
+        modelStateReadyViewers.clear();
         for (NativeCacheReplaySession state : nativeCacheReplaySessions.values()) {
             cleanupGeneratedCacheSessionDirectoryNow(state.sourceDir(), "plugin-disable");
         }
@@ -261,6 +263,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        modelStateReadyViewers.remove(player.getUniqueId());
         sessions.put(player.getUniqueId(), YsmClientSession.pending(player.getUniqueId(), player.getName()));
         scheduleHandshake(player, 0);
     }
@@ -275,6 +278,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         nativeSyncGapWarnings.remove(event.getPlayer().getUniqueId());
         nativeSyncStates.remove(event.getPlayer().getUniqueId());
         reportNativeSessions.remove(event.getPlayer().getUniqueId());
+        modelStateReadyViewers.remove(event.getPlayer().getUniqueId());
         NativeCacheReplaySession removed = nativeCacheReplaySessions.remove(event.getPlayer().getUniqueId());
         if (removed != null) {
             cleanupGeneratedCacheSessionDirectory(removed.sourceDir(), "player-quit");
@@ -339,6 +343,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                         getLogger().info("YSM saved model restore deferred until native cache result: player="
                                 + player.getName() + ".");
                     } else {
+                        markModelStateViewerReady(player, "handshake-no-cache-replay");
                         scheduleSavedModelRestore(player, MODEL_STATE_REPLAY_DELAY_TICKS, "handshake");
                         scheduleSavedModelRestore(player, MODEL_STATE_LATE_REPLAY_DELAY_TICKS, "handshake-late");
                         scheduleModelStateReplay(player, MODEL_STATE_REPLAY_DELAY_TICKS, "handshake");
@@ -927,13 +932,12 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         byte[] payload = YsmProtocol.encodeMolangExecute(entityIds, expression);
         int sent = 0;
         for (Player viewer : Bukkit.getOnlinePlayers()) {
-            YsmClientSession viewerSession = sessions.get(viewer.getUniqueId());
-            if (viewerSession != null && viewerSession.compatible()) {
+            if (isModelStateViewerReady(viewer)) {
                 sendYsmPayload(viewer, payload, "compat-molang");
                 sent++;
             }
         }
-        sender.sendMessage(ChatColor.GREEN + "Relayed YSM MoLang expression to " + sent + " compatible viewer(s).");
+        sender.sendMessage(ChatColor.GREEN + "Relayed YSM MoLang expression to " + sent + " cache-ready viewer(s).");
         return true;
     }
 
@@ -1286,8 +1290,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         byte[] payload = YsmProtocol.encodePlayerAnimationSwitch(target.getEntityId(), safeAnimationName);
         int sent = 0;
         for (Player viewer : Bukkit.getOnlinePlayers()) {
-            YsmClientSession viewerSession = sessions.get(viewer.getUniqueId());
-            if (viewerSession != null && viewerSession.compatible()) {
+            if (isModelStateViewerReady(viewer)) {
                 sendYsmPayload(viewer, payload, "animation:" + reason + ":" + target.getName());
                 sent++;
             }
@@ -2238,7 +2241,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                 getLogger().info("YSM client model selection applied: player=" + player.getName()
                         + ", model=" + selection.modelId()
                         + ", texture=" + selection.textureId()
-                        + ", compatibleViewers=" + result.compatibleViewers() + "/" + result.onlineViewers()
+                        + ", readyViewers=" + result.readyViewers() + "/" + result.onlineViewers()
                         + ", distributionPrepared=" + result.distributionPrepared() + ".");
             }
         } else {
@@ -2308,8 +2311,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
         int sent = 0;
         for (Player viewer : Bukkit.getOnlinePlayers()) {
-            YsmClientSession viewerSession = sessions.get(viewer.getUniqueId());
-            if (viewerSession != null && viewerSession.compatible()) {
+            if (isModelStateViewerReady(viewer)) {
                 sendYsmPayload(viewer, payload, "animation:" + player.getName()
                         + ":action=" + request.action());
                 sent++;
@@ -2328,7 +2330,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                     + ", profileExtraAnimations=" + resolution.profile().extraAnimations().size()
                     + ", profileButtons=" + resolution.profile().extraAnimationButtons().size()
                     + ", profileClassifies=" + resolution.profile().extraAnimationClassifies().size()
-                    + ", compatibleViewers=" + sent + "/" + Bukkit.getOnlinePlayers().size()
+                    + ", readyViewers=" + sent + "/" + Bukkit.getOnlinePlayers().size()
                     + ".");
         }
         if (debug && resolution.source().startsWith("fallback")) {
@@ -2550,8 +2552,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                 feedback.variables());
         int sent = 0;
         for (Player viewer : Bukkit.getOnlinePlayers()) {
-            YsmClientSession viewerSession = sessions.get(viewer.getUniqueId());
-            if (viewerSession != null && viewerSession.compatible()) {
+            if (isModelStateViewerReady(viewer)) {
                 sendYsmPayload(viewer, payload, "molang-feedback:" + player.getName());
                 sent++;
             }
@@ -2572,8 +2573,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         byte[] payload = YsmProtocol.encodeAnimationExpressionSync(player.getEntityId(), values);
         int sent = 0;
         for (Player viewer : Bukkit.getOnlinePlayers()) {
-            YsmClientSession viewerSession = sessions.get(viewer.getUniqueId());
-            if (viewerSession != null && viewerSession.compatible()) {
+            if (isModelStateViewerReady(viewer)) {
                 sendYsmPayload(viewer, payload, "animation-expression:" + player.getName());
                 sent++;
             }
@@ -2680,8 +2680,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         int sent = 0;
         int online = Bukkit.getOnlinePlayers().size();
         for (Player viewer : Bukkit.getOnlinePlayers()) {
-            YsmClientSession session = sessions.get(viewer.getUniqueId());
-            if (session != null && session.compatible()) {
+            if (isModelStateViewerReady(viewer)) {
                 sendEntityDataUpdate(viewer, target.getEntityId(), body, payload);
                 sent++;
                 if (logPacketDetails) {
@@ -2700,13 +2699,13 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         }
         if (debug) {
             getLogger().info("YSM model-state apply finished: target=" + target.getName()
-                    + ", compatibleViewers=" + sent + "/" + online
+                    + ", readyViewers=" + sent + "/" + online
                     + ", model=" + modelId
                     + ", texture=" + textureId + ".");
         }
         if (sender != null) {
             sender.sendMessage(ChatColor.GREEN + "Sent YSM model state for " + target.getName()
-                    + " to " + sent + " compatible client(s): " + modelId + "/" + textureId + ".");
+                    + " to " + sent + " cache-ready client(s): " + modelId + "/" + textureId + ".");
             if (preparedModel == null && !defaultModel) {
                 sender.sendMessage(ChatColor.YELLOW + "Model state was sent, but no prepared distribution package exists yet.");
             }
@@ -2743,8 +2742,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             }
             int sent = 0;
             for (Player viewer : Bukkit.getOnlinePlayers()) {
-                YsmClientSession viewerSession = sessions.get(viewer.getUniqueId());
-                if (viewerSession != null && viewerSession.compatible()) {
+                if (isModelStateViewerReady(viewer)) {
                     sendStoredModelState(viewer, current, state, "model-state-broadcast:" + reason);
                     sent++;
                 }
@@ -2762,8 +2760,12 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
     }
 
     private void replayKnownModelStatesToViewer(Player viewer, String reason) {
-        YsmClientSession viewerSession = sessions.get(viewer.getUniqueId());
-        if (viewerSession == null || !viewerSession.compatible()) {
+        if (!isModelStateViewerReady(viewer)) {
+            if (debug) {
+                getLogger().info("YSM model-state replay skipped until viewer cache is ready: viewer="
+                        + viewer.getName()
+                        + ", reason=" + reason + ".");
+            }
             return;
         }
 
@@ -2783,6 +2785,45 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                         + ", reason=" + reason + ".");
             }
         }
+    }
+
+    private boolean isModelStateViewerReady(Player viewer) {
+        YsmClientSession viewerSession = sessions.get(viewer.getUniqueId());
+        return viewerSession != null
+                && viewerSession.compatible()
+                && modelStateReadyViewers.contains(viewer.getUniqueId());
+    }
+
+    private void markModelStateViewerPending(Player viewer, String reason) {
+        boolean wasReady = modelStateReadyViewers.remove(viewer.getUniqueId());
+        if (debug || wasReady) {
+            getLogger().info("YSM model-state viewer pending cache sync: viewer="
+                    + viewer.getName()
+                    + ", reason=" + reason + ".");
+        }
+    }
+
+    private void markModelStateViewerReady(Player viewer, String reason) {
+        YsmClientSession viewerSession = sessions.get(viewer.getUniqueId());
+        if (viewerSession == null || !viewerSession.compatible()) {
+            return;
+        }
+        boolean changed = modelStateReadyViewers.add(viewer.getUniqueId());
+        if (debug || changed) {
+            getLogger().info("YSM model-state viewer ready: viewer="
+                    + viewer.getName()
+                    + ", reason=" + reason + ".");
+        }
+    }
+
+    private void scheduleModelStateViewerReady(Player viewer, long delayTicks, String reason) {
+        UUID viewerId = viewer.getUniqueId();
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            Player current = Bukkit.getPlayer(viewerId);
+            if (current != null && current.isOnline()) {
+                markModelStateViewerReady(current, reason);
+            }
+        }, Math.max(1L, delayTicks));
     }
 
     private void sendStoredModelState(Player viewer, Player target, AppliedModelState state, String reason) {
@@ -2863,7 +2904,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                         + ", texture=" + saved.textureId()
                         + ", disabled=" + saved.disabled()
                         + ", reason=" + reason
-                        + ", compatibleViewers=" + result.compatibleViewers() + "/" + result.onlineViewers()
+                        + ", readyViewers=" + result.readyViewers() + "/" + result.onlineViewers()
                         + ".");
             }
         } else {
@@ -3994,6 +4035,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                 intervalTicks,
                 chunkBytes,
                 1);
+        markModelStateViewerPending(player, "native-cache-start");
         nativeCacheReplaySessions.put(player.getUniqueId(), state);
         sendServerRawPacket(player, type1Raw, "native-cache:" + captureName + ":type1");
 
@@ -4137,8 +4179,8 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                 byte[] cacheBytes = YsmCrypto.encryptCachedModel(
                         payload.bytes(),
                         OpenYsmServerCacheConverter.SERVER_CACHE_FORMAT,
-                        tokens.physicalHashA(),
-                        tokens.physicalHashB(),
+                        tokens.displayHashA(),
+                        tokens.displayHashB(),
                         keys.serverCacheKey());
                 persistGeneratedServerCache(entry, model, tokens, cacheBytes);
                 cacheBytesTotal += cacheBytes.length;
@@ -4655,8 +4697,8 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                         byte[] cacheBytes = YsmCrypto.encryptCachedModel(
                                 payload.bytes(),
                                 nativeFormat,
-                                tokens.physicalHashA(),
-                                tokens.physicalHashB(),
+                                tokens.displayHashA(),
+                                tokens.displayHashB(),
                                 transferCacheKey);
                         cacheFile = persistGeneratedServerCache(requestedEntry, model, tokens, cacheBytes);
                         bodyHash = YsmCrypto.cachedModelBodyVerificationHash(cacheBytes);
@@ -4687,6 +4729,8 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                     cacheEntries.put(tokenHex, entry);
                     manifestModels.add(new GeneratedNativeCacheModel(
                             token,
+                            hashA,
+                            hashB,
                             nativeName,
                             nativeFormat,
                             payload.bytes().length,
@@ -4830,6 +4874,8 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             cacheEntries.put(indexed.tokenHex(), entry);
             manifestModels.add(new GeneratedNativeCacheModel(
                     token,
+                    indexed.displayHashA(),
+                    indexed.displayHashB(),
                     nativeCacheModelName(indexed.modelId()),
                     OpenYsmServerCacheConverter.SERVER_CACHE_FORMAT,
                     Math.toIntExact(Math.min(Integer.MAX_VALUE, indexed.serverCacheBytes())),
@@ -4940,6 +4986,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             return;
         }
 
+        markModelStateViewerPending(player, "generated-cache-start");
         NativeCacheReplaySession previous = nativeCacheReplaySessions.put(playerId, prepared.state());
         if (previous != null) {
             cleanupGeneratedCacheSessionDirectory(previous.sourceDir(), "replaced-by-new-generated-sync");
@@ -4991,7 +5038,8 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         } else {
             getLogger().info("YSM generated cache sync started: player=" + player.getName()
                     + ", models=" + prepared.modelCount()
-                    + ", cache=" + formatBytes(prepared.cacheBytes()) + ".");
+                    + ", cache=" + formatBytes(prepared.cacheBytes())
+                    + ", tokenVersion=" + GENERATED_CACHE_TOKEN_VERSION + ".");
         }
     }
 
@@ -5073,7 +5121,8 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             generatedOpenYsmCacheKeys = cached;
             getLogger().info("YSM generated OpenYSM cache keys loaded: file=" + indexFile.toAbsolutePath()
                     + ", serverCacheKey=" + YsmNativeSyncPrototype.keyPreview(serverCacheKey)
-                    + ", clientCacheKey=" + YsmNativeSyncPrototype.keyPreview(clientCacheKey) + ".");
+                    + ", clientCacheKey=" + YsmNativeSyncPrototype.keyPreview(clientCacheKey)
+                    + ", tokenVersion=" + GENERATED_CACHE_TOKEN_VERSION + ".");
             return cached;
         }
     }
@@ -5230,11 +5279,25 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         Path root = resolvePluginPath(GENERATED_CACHE_SERVER_ROOT);
         synchronized (generatedServerCacheIndexLock) {
             try {
-                Map<String, GeneratedServerCacheIndexEntry> indexed = generatedServerCacheIndexByModelId();
+                Map<String, GeneratedServerCacheIndexEntry> indexed = new LinkedHashMap<>(generatedServerCacheIndexByModelId());
+                int relinked = 0;
+                for (YsmModelRepository.Entry modelEntry : modelRepository.entries()) {
+                    GeneratedServerCacheIndexEntry indexedEntry = indexed.get(modelEntry.modelId());
+                    if (indexedEntry == null || !indexedEntry.isCurrentFor(modelEntry)) {
+                        continue;
+                    }
+                    GeneratedServerCacheIndexEntry relinkedEntry = indexedEntry.withCurrentSource(modelEntry);
+                    if (!relinkedEntry.sourcePath().equals(indexedEntry.sourcePath())
+                            || relinkedEntry.sourceMtime() != indexedEntry.sourceMtime()) {
+                        indexed.put(modelEntry.modelId(), relinkedEntry);
+                        relinked++;
+                    }
+                }
                 writeGeneratedServerCacheIndexes(root, indexed);
                 GeneratedServerCacheStats stats = generatedServerCacheStats();
                 sender.sendMessage(ChatColor.GREEN + "Generated OpenYSM cache index compacted: models="
                         + indexed.size()
+                        + ", relinked=" + relinked
                         + ", files=" + stats.files()
                         + ", bytes=" + formatBytes(stats.bytes())
                         + ", map=" + root.resolve("cache-map.tsv").toAbsolutePath() + ".");
@@ -5393,7 +5456,8 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         body.writeBytes(clientCacheKey);
         writeNativeVarInt(body, models.size());
         for (GeneratedNativeCacheModel model : models) {
-            body.writeBytes(model.token());
+            writeNativeVarInt(body, model.hashA());
+            writeNativeVarInt(body, model.hashB());
             writeNativeString(body, model.name());
             writeNativeVarInt(body, 0);
             writeNativeVarInt(body, 0);
@@ -5608,23 +5672,26 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                             "cache-already-present")) {
                         return;
                     }
-                    scheduleSavedModelRestore(player, MODEL_STATE_REPLAY_DELAY_TICKS, "native-cache-already-present");
-                    scheduleModelStateReplay(player, MODEL_STATE_REPLAY_DELAY_TICKS, "native-cache-already-present");
-                    scheduleAppliedModelStateBroadcast(player, MODEL_STATE_REPLAY_DELAY_TICKS, "native-cache-already-present");
+                    scheduleModelStateViewerReady(
+                            player,
+                            MODEL_STATE_REPLAY_DELAY_TICKS,
+                            "native-cache-already-present");
+                    long stateReplayDelayTicks = MODEL_STATE_REPLAY_DELAY_TICKS + 1L;
+                    scheduleSavedModelRestore(player, stateReplayDelayTicks, "native-cache-already-present");
+                    scheduleModelStateReplay(player, stateReplayDelayTicks, "native-cache-already-present");
+                    scheduleAppliedModelStateBroadcast(player, stateReplayDelayTicks, "native-cache-already-present");
                     scheduleNativeCacheReplaySessionCleanup(
                             playerId,
-                            MODEL_STATE_REPLAY_DELAY_TICKS + 2L,
+                            stateReplayDelayTicks + 2L,
                             "native-cache-already-present");
                     return;
                 }
-                if (debug) {
-                    getLogger().info("YSM native cache replay client requested cache entries: player="
-                            + player.getName()
-                            + ", count=" + request.count()
-                            + ", tokenBytes=" + request.tokenBytes()
-                            + ", entries=" + describeNativeCacheRequestedEntries(request.entries())
-                            + ".");
-                }
+                getLogger().info("YSM native cache replay client requested cache entries: player="
+                        + player.getName()
+                        + ", count=" + request.count()
+                        + ", tokenBytes=" + request.tokenBytes()
+                        + ", entries=" + describeNativeCacheRequestedEntries(request.entries())
+                        + ".");
                 sendNativeCacheChunks(player, ready, request.entries());
             }
         } catch (RuntimeException ex) {
@@ -5769,12 +5836,14 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         if (scheduleNextGeneratedCacheBatch(player.getUniqueId(), player.getName(), replayDelayTicks, "type5-complete")) {
             return;
         }
-        scheduleSavedModelRestore(player, replayDelayTicks, "native-cache");
-        scheduleModelStateReplay(player, replayDelayTicks, "native-cache");
-        scheduleAppliedModelStateBroadcast(player, replayDelayTicks, "native-cache");
+        scheduleModelStateViewerReady(player, replayDelayTicks, "native-cache-complete");
+        long stateReplayDelayTicks = replayDelayTicks + 1L;
+        scheduleSavedModelRestore(player, stateReplayDelayTicks, "native-cache");
+        scheduleModelStateReplay(player, stateReplayDelayTicks, "native-cache");
+        scheduleAppliedModelStateBroadcast(player, stateReplayDelayTicks, "native-cache");
         scheduleNativeCacheReplaySessionCleanup(
                 player.getUniqueId(),
-                replayDelayTicks + 2L,
+                stateReplayDelayTicks + 2L,
                 "native-cache-complete");
     }
 
@@ -5883,32 +5952,15 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
         byte[] chunk = buffer.array();
         Long bodyHash = entry.bodyHash();
         if (bodyHash != null) {
-            patchNativeCacheAliasFooter(chunk, offset, entry.cacheBytes(), bodyHash, entry.hashA(), entry.hashB());
+            YsmCrypto.patchCachedModelVerificationFooter(
+                    chunk,
+                    offset,
+                    entry.cacheBytes(),
+                    bodyHash,
+                    entry.hashA(),
+                    entry.hashB());
         }
         return chunk;
-    }
-
-    private static void patchNativeCacheAliasFooter(
-            byte[] chunk,
-            long offset,
-            long cacheBytes,
-            long bodyHash,
-            long hashA,
-            long hashB) {
-        long footerOffset = cacheBytes - Long.BYTES;
-        long chunkEnd = offset + chunk.length;
-        if (chunk.length == 0 || chunkEnd <= footerOffset || offset >= cacheBytes) {
-            return;
-        }
-
-        byte[] footer = new byte[Long.BYTES];
-        writeLittleEndianLong(footer, 0, bodyHash ^ hashA ^ hashB);
-        int footerStartInChunk = Math.toIntExact(Math.max(0L, footerOffset - offset));
-        int footerStartInFooter = Math.toIntExact(Math.max(0L, offset - footerOffset));
-        int bytes = Math.min(Long.BYTES - footerStartInFooter, chunk.length - footerStartInChunk);
-        if (bytes > 0) {
-            System.arraycopy(footer, footerStartInFooter, chunk, footerStartInChunk, bytes);
-        }
     }
 
     private static void writeGeneratedCacheSessionDebugFiles(
@@ -6208,15 +6260,6 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
                 | (((long) data[offset + 5] & 0xff) << 40)
                 | (((long) data[offset + 6] & 0xff) << 48)
                 | (((long) data[offset + 7] & 0xff) << 56);
-    }
-
-    private static void writeLittleEndianLong(byte[] data, int offset, long value) {
-        if (offset < 0 || offset + Long.BYTES > data.length) {
-            throw new IllegalArgumentException("Little-endian long offset is out of range");
-        }
-        for (int i = 0; i < Long.BYTES; i++) {
-            data[offset + i] = (byte) (value >>> (i * 8));
-        }
     }
 
     private static int readLittleEndianInt(byte[] data, int offset) {
@@ -7350,6 +7393,11 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
         ChatColor color = session.compatible() ? ChatColor.GREEN : ChatColor.YELLOW;
         sender.sendMessage(color + player.getName() + ": " + session.describe());
+        if (session.compatible()) {
+            sender.sendMessage(ChatColor.GRAY + "  model-state ready: "
+                    + isModelStateViewerReady(player)
+                    + (nativeCacheReplaySessions.containsKey(player.getUniqueId()) ? " (cache sync active)" : ""));
+        }
         AppliedModelState applied = appliedModelStates.get(player.getUniqueId());
         SavedModelState saved = savedModelStates.get(player.getUniqueId());
         if (applied != null) {
@@ -7470,6 +7518,8 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
     private record GeneratedNativeCacheModel(
             byte[] token,
+            long hashA,
+            long hashB,
             String name,
             int format,
             int transferBytes,
@@ -7525,6 +7575,25 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
             } catch (IOException ex) {
                 return false;
             }
+        }
+
+        GeneratedServerCacheIndexEntry withCurrentSource(YsmModelRepository.Entry entry) throws IOException {
+            return new GeneratedServerCacheIndexEntry(
+                    tokenHex,
+                    modelId,
+                    entry.file().toAbsolutePath().normalize(),
+                    entry.size(),
+                    Files.getLastModifiedTime(entry.file()).toMillis(),
+                    cacheFile,
+                    cacheBytes,
+                    serverCacheBytes,
+                    modelHash,
+                    sha256,
+                    tokenVersion,
+                    physicalTokenHex,
+                    bodyHash,
+                    displayHashA,
+                    displayHashB);
         }
     }
 
@@ -8002,7 +8071,7 @@ public final class PaperYsmPlugin extends JavaPlugin implements Listener, Plugin
 
     private record ModelSelectionApplyResult(
             boolean applied,
-            int compatibleViewers,
+            int readyViewers,
             int onlineViewers,
             boolean modelFound,
             boolean distributionPrepared,

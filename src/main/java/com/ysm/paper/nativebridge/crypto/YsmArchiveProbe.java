@@ -142,7 +142,7 @@ public final class YsmArchiveProbe {
 
         byte[] data = Arrays.copyOf(compressed, compressed.length);
         int magic = LittleEndian.readInt(data, 0);
-        if (magic != 0xfd2fb528) {
+        if (magic != YsmCrypto.YSM_ZSTD_MAGIC) {
             throw new IllegalArgumentException("YSM zstd magic mismatch");
         }
 

@@ -7,6 +7,8 @@ import java.security.SecureRandom;
 import java.util.Arrays;
 
 public final class YsmCrypto {
+    public static final int YSM_ZSTD_MAGIC = 0xfd2fb528;
+
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private YsmCrypto() {
@@ -176,6 +178,49 @@ public final class YsmCrypto {
                 YsmSeeds.CACHE_VERIFICATION);
     }
 
+    public static long cachedModelStoredVerificationHash(byte[] cachedModel) {
+        if (cachedModel == null || cachedModel.length < Long.BYTES) {
+            throw new IllegalArgumentException("Cached model is too short");
+        }
+        return LittleEndian.readLong(cachedModel, cachedModel.length - Long.BYTES);
+    }
+
+    public static boolean cachedModelIdentityMatches(byte[] cachedModel, long fileHashA, long fileHashB) {
+        return cachedModelStoredVerificationHash(cachedModel)
+                == (cachedModelBodyVerificationHash(cachedModel) ^ fileHashA ^ fileHashB);
+    }
+
+    public static void patchCachedModelVerificationFooter(
+            byte[] chunk,
+            long chunkOffset,
+            long cacheBytes,
+            long bodyHash,
+            long fileHashA,
+            long fileHashB) {
+        if (chunk == null) {
+            throw new IllegalArgumentException("Cached model chunk is null");
+        }
+        if (chunkOffset < 0 || cacheBytes < Long.BYTES || chunkOffset > cacheBytes
+                || chunk.length > cacheBytes - chunkOffset) {
+            throw new IllegalArgumentException("Cached model chunk range is invalid");
+        }
+
+        long footerOffset = cacheBytes - Long.BYTES;
+        long chunkEnd = chunkOffset + chunk.length;
+        if (chunk.length == 0 || chunkEnd <= footerOffset) {
+            return;
+        }
+
+        byte[] footer = new byte[Long.BYTES];
+        LittleEndian.writeLong(footer, 0, bodyHash ^ fileHashA ^ fileHashB);
+        int footerStartInChunk = Math.toIntExact(Math.max(0L, footerOffset - chunkOffset));
+        int footerStartInFooter = Math.toIntExact(Math.max(0L, chunkOffset - footerOffset));
+        int bytes = Math.min(Long.BYTES - footerStartInFooter, chunk.length - footerStartInChunk);
+        if (bytes > 0) {
+            System.arraycopy(footer, footerStartInFooter, chunk, footerStartInChunk, bytes);
+        }
+    }
+
     public static byte[] encryptCachedModel(
             byte[] payload,
             int format,
@@ -225,7 +270,7 @@ public final class YsmCrypto {
             throw new IllegalArgumentException("Zstd frame is too short");
         }
         byte[] data = Arrays.copyOf(standardZstd, standardZstd.length);
-        if (LittleEndian.readInt(data, 0) != 0xfd2fb528) {
+        if (LittleEndian.readInt(data, 0) != YSM_ZSTD_MAGIC) {
             throw new IllegalArgumentException("Not a standard Zstd frame");
         }
 
