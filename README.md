@@ -1,102 +1,84 @@
 # Paper-YSM
 
-Paper-YSM is a Paper-side reimplementation prototype for the Yes Steve Model
-server distribution path. It can handshake with YSM 2.6.x clients, expose the
-authorized model list, replay a captured FreesiaII-style native cache stream,
-and apply YSM model state to compatible viewers.
+Paper-YSM 是一个 Paper 侧的重实现原型，用于复现 Yes Steve Model 的服务端分发流程。它可以与 YSM 2.6.x 客户端完成握手，公开已授权的模型列表，重放捕获的 FreesiaII 风格原生缓存流，并将 YSM 模型状态应用到兼容的查看器。
 
-The current priority is a usable Paper-side cache distributor: real
-Fabric/YSM/Freesia worker output is treated as the cache oracle, while PaperYSM
-handles handshake, native-cache replay, saved model state, and diagnostics.
+当前的重点是提供一个可用的 Paper 侧缓存分发器：将真实的 Fabric/YSM/Freesia 工作端输出作为缓存基准，而 PaperYSM 负责握手、原生缓存重放、已保存的模型状态以及诊断功能。
 
-## Current Status
+## 当前状态
 
-- YSM `51/52` Java-layer handshake works on channel `yes_steve_model:2_6_0`.
-- Authorized model list packet `id=6` is generated from local `.ysm` files.
-- V3 `.ysm` parsing and cache preparation use logic from the YSMParser project.
-- Native cache sync defaults to replaying worker/Freesia-derived cache material.
-- After cache sync, YSM clients can select the server model and see model state
-  and ordinary animation state across two clients.
-- Wheel/custom animation forwarding resolves actions from scanned `.ysm`
-  profiles, including nested wheel/classify entries. Keep the corresponding
-  `.ysm` files available under the PaperYSM `models` directory.
+- YSM `51/52` Java 层握手已在 `yes_steve_model:2_6_0` 通道上正常工作。
+- 授权模型列表数据包 `id=6` 会根据本地 `.ysm` 文件生成。
+- V3 `.ysm` 解析与缓存准备使用了 YSMParser 项目中的逻辑。
+- 原生缓存同步默认重放从工作端/Freesia 派生的缓存材料。
+- 完成缓存同步后，YSM 客户端可以选择服务端模型，并在两个客户端之间看到模型状态和普通动画状态。
+- 滚轮/自定义动画转发会从扫描得到的 `.ysm` 配置中解析动作，其中包括嵌套的滚轮/分类条目。请确保对应的 `.ysm` 文件位于 PaperYSM 的 `models` 目录下。
 
-## Repository Layout
+## 仓库布局
 
 ```text
-src/                         Paper plugin source
-docs/                        Protocol notes, progress notes, and old prototype notes
-ysm-sniffer/                 Velocity packet capture helper
-scripts/                     One-shot local launch scripts
-test-server/
-  direct-paper/              Standalone Paper server with PaperYSM
-  paper-backend/             Paper backend for Velocity/FreesiaII comparison
-  velocity-proxy/            Velocity proxy with FreesiaII and packet tools
-  freesia-worker/            Fabric YSM/Freesia worker server
-references/
-  YSMParser/                 Snapshot of the parser project used for format work
-  FreesiaII/                 FreesiaII jars and release metadata used as reference
-  decompiled/                Decompiled or extracted client/native reference material
+src/                         Paper 插件源代码
+docs/                        协议说明、进度记录和旧版原型说明
+ysm-sniffer/                 Velocity 数据包捕获辅助工具
+scripts/                     一次性本地启动脚本
+test-server/                 未上传 需要自己整理使用
+  direct-paper/              独立运行的 PaperYSM 测试服务器
+  paper-backend/             用于 Velocity/FreesiaII 对比的 Paper 后端
+  velocity-proxy/            带 FreesiaII 和数据包工具的 Velocity 代理
+  freesia-worker/            Fabric YSM/Freesia 工作端服务器
+references/                  未上传 需要自己整理使用
+  YSMParser/                 用于格式处理的解析器项目快照
+  FreesiaII/                 用作参考的 FreesiaII JAR 文件和发行版元数据
+  decompiled/                反编译或提取的客户端/原生参考材料
 ```
 
-The formalized repository lives at `D:\Code_Project\Paper-YSM`. The original
-prototype copy under `D:\Code_Project\YSMParser\paper-ysm` is kept as source
-material until it is no longer needed.
+## 构建
 
-## Build
-
-Use Pixi from the repository root. Pixi provides the Gradle/JDK toolchain used
-by the local tasks.
+从仓库根目录使用 Pixi。Pixi 提供本地任务所需的 Gradle/JDK 工具链。
 
 ```powershell
 pixi run build
 pixi run check
 ```
 
-The plugin jar is written to:
+插件 JAR 文件会写入：
 
 ```text
 build/libs/paper-ysm-0.1.0-SNAPSHOT.jar
 ```
 
-For the local direct Paper test server:
+启动本地直连 Paper 测试服务器：
 
 ```powershell
 pixi run deploy-direct
 pixi run run-direct
 ```
 
-`run-direct` builds, deploys the jar, and starts the direct Paper server in the
-current terminal. `server-direct` only starts the server.
+`run-direct` 会执行构建、部署 JAR，并在当前终端中启动直连 Paper 服务器。`server-direct` 只启动服务器。
 
-## Test Servers
+## 测试服务器
 
-Use these entry points from the repository root:
+从仓库根目录使用以下入口：
 
 ```powershell
 pixi run run-direct
 scripts\start-freesiaii-stack.bat
 ```
 
-Direct PaperYSM test:
+直连 PaperYSM 测试：
 
-- Join `127.0.0.1:30001`.
-- Uses `test-server\direct-paper`.
-- Primary runtime for PaperYSM work. Use the channel switch script below to
-  use the worker/Freesia cache replay path by default.
+- 加入 `127.0.0.1:30001`。
+- 使用 `test-server\direct-paper`。
+- 这是 PaperYSM 开发的主要运行环境。使用下面的通道切换脚本，可以让它默认采用工作端/Freesia 缓存重放路径。
 
-FreesiaII comparison stack:
+FreesiaII 对比栈：
 
-- Join through Velocity at `127.0.0.1:30000`.
-- Starts `test-server\paper-backend`, `test-server\velocity-proxy`, and
-  `test-server\freesia-worker`.
-- Useful for fresh captures and behavior comparison against FreesiaII. It is
-  not the normal PaperYSM development runtime.
+- 通过 `127.0.0.1:30000` 连接 Velocity。
+- 启动 `test-server\paper-backend`、`test-server\velocity-proxy` 和 `test-server\freesia-worker`。
+- 用于重新捕获数据，并与 FreesiaII 的行为进行对比。它不是常规的 PaperYSM 开发运行环境。
 
-Only run one Paper server bound to `30001` at a time.
+同一时间只能有一个 Paper 服务器绑定 `30001`。
 
-The direct Paper test server should normally run the Freesia/worker cache
-profile:
+直连 Paper 测试服务器通常应使用 Freesia/工作端缓存配置：
 
 ```bat
 scripts\switch-direct-paper-channel.bat status
@@ -104,14 +86,11 @@ scripts\switch-direct-paper-channel.bat freesia
 scripts\switch-direct-paper-channel.bat auth-only
 ```
 
-- `freesia`: direct Paper replays the captured `freesia-from-velocity` native-cache
-  fixture after handshake.
-- `generated`: still exists as a research profile, but is no longer the normal
-  path because Java-generated cache bytes are not accepted by the client yet.
-- `auth-only`: Java handshake and authorized model list only; no native cache
-  stream.
+- `freesia`：直连 Paper 在握手后重放捕获的 `freesia-from-velocity` 原生缓存固定数据。
+- `generated`：仍作为研究配置保留，但不再是常规路径，因为客户端目前尚未接受 Java 生成的缓存字节。
+- `auth-only`：仅执行 Java 握手和授权模型列表流程，不发送原生缓存流。
 
-## Useful Commands
+## 实用命令
 
 ```text
 /ysm sync
@@ -125,111 +104,76 @@ scripts\switch-direct-paper-channel.bat auth-only
 /ysm debug <on|off>
 ```
 
-Normal players can run `/ysm sync` for themselves. OPs or users with
-`paperysm.admin` can target other players, sync everyone, switch cache source,
-and change send speed/debug settings online. `/paperysm` remains an alias for
-older scripts, but `/ysm` is the intended command.
+普通玩家可以运行 `/ysm sync` 为自己执行同步。拥有 OP 权限或 `paperysm.admin` 权限的用户，可以指定其他玩家、为所有人执行同步、切换缓存来源，并在线修改发送速度/调试设置。`/paperysm` 仍作为旧脚本的别名保留，但推荐使用 `/ysm`。
 
-Analyze Freesia animation request/broadcast pairs from an extracted capture:
+从提取出的捕获数据中分析 Freesia 动画请求/广播对：
 
 ```powershell
 gradle analyzeAnimationCapture
 gradle analyzeAnimationCapture -PysmAnimationCaptureDir="references/analysis-artifacts/freesia-latest-extracted"
 ```
 
-Analyze a native-cache fixture and compare its decrypted server-cache payload
-against a local `.ysm`:
+分析原生缓存固定数据，并将其解密后的服务端缓存负载与本地 `.ysm` 文件进行比较：
 
 ```powershell
 gradle analyzeNativeCacheFixture -PysmNativeCacheFilter="拉菲Ⅱ/拉菲Ⅱ_v1.2.ysm" -PysmNativeCacheLocalModel="test-server/direct-paper/plugins/PaperYSM/models/拉菲Ⅱ/拉菲Ⅱ_v1.2.ysm"
 ```
 
-The current working FreesiaII replay source is `cache/freesia-from-velocity`.
-It is built from captured FreesiaII cache material and contains the manifest
-plus cache entries needed by the client progress bar and server model
-selection. The Paper-generated route writes its test artifacts under
-`cache/openysm`.
+当前可用的 FreesiaII 重放来源是 `cache/freesia-from-velocity`。它由捕获的 FreesiaII 缓存材料构建，包含客户端进度条和服务端模型选择所需的清单及缓存条目。Paper 生成的路径会将测试产物写入 `cache/openysm`。
 
-## Model Directory For Animations
+## 动画模型目录
 
-PaperYSM keeps model files under `plugins/PaperYSM/models`. Native cache
-fixtures and generated type3/type5 artifacts live under `plugins/PaperYSM/cache/<channel>`.
-Wheel and nested-wheel animation mapping still comes from decoded `.ysm`
-profiles in the model directory:
+PaperYSM 将模型文件保存在 `plugins/PaperYSM/models` 下。原生缓存固定数据以及生成的 type3/type5 产物位于 `plugins/PaperYSM/cache/<channel>` 下。滚轮和嵌套滚轮的动画映射仍来自模型目录中已解码的 `.ysm` 配置：
 
 ```text
 plugins\PaperYSM\models
 ```
 
-Do not expose large external model libraries through junctions/symlinks. The
-YSM client browser shows the real relative path and becomes awkward to use.
-Copy model groups into the worker `custom` directory instead, then make a real
-FreesiaII/Velocity capture and export that capture into the Paper fixture.
+不要通过 junction/symlink 暴露大型外部模型库。YSM 客户端浏览器会显示真实的相对路径，使用起来会很不方便。请将模型组复制到工作端的 `custom` 目录中，然后执行一次真实的 FreesiaII/Velocity 捕获，再将该捕获导出到 Paper 固定数据中。
 
-When moving the setup to another server, copy both the Paper native-cache
-fixture and any matching `.ysm` model tree used for animation mapping. The
-cache fixture alone is enough for model sync; missing `.ysm` references only
-mean some custom wheel animations cannot be resolved. OPs can change the
-reference directory online:
+将配置迁移到另一台服务器时，请同时复制 Paper 原生缓存固定数据，以及用于动画映射的匹配 `.ysm` 模型树。仅缓存固定数据就足以完成模型同步；缺失 `.ysm` 引用只意味着部分自定义滚轮动画无法解析。OP 可以在线修改引用目录：
 
 ```text
 /ysm config modeldir <path>
 ```
 
-The normal import path is capture-first. Start the full FreesiaII comparison
-stack, join through Velocity with a YSM client, let Freesia complete native
-sync, then export the real type3/type5 bundle:
+正常的导入流程以捕获为先。启动完整的 FreesiaII 对比栈，通过 Velocity 使用 YSM 客户端加入，让 Freesia 完成原生同步，然后导出真实的 type3/type5 数据包：
 
 ```powershell
 scripts\start-freesiaii-stack.bat
 scripts\paperysm.bat export-capture
 ```
 
-`scripts\sync-velocity-cache-to-paper.bat` is the same capture export wrapped in
-a shorter batch file. For a full portable fixture, clear the client's YSM cache
-before joining Velocity; otherwise Freesia may only send type5 chunks for models
-the client was missing in that run.
+`scripts\sync-velocity-cache-to-paper.bat` 是同一捕获导出流程的简化批处理文件。若要生成完整的可移植固定数据，请在通过 Velocity 加入之前清除客户端的 YSM 缓存；否则在本次运行中，Freesia 可能只会为客户端缺失的模型发送 type5 数据块。
 
-The old worker-cache batch tool is now research-only. It can snapshot worker
-`cache/server` and copy newly generated bin files, but it cannot safely invent
-the matching type3 token map. Direct export is blocked unless you pass the
-explicit unsafe flag:
+旧版工作端缓存批处理工具目前仅供研究使用。它可以对工作端的 `cache/server` 做快照并复制新生成的 bin 文件，但无法安全地自行生成匹配的 type3 令牌映射。只有在显式传入不安全标志时，才允许直接导出：
 
 ```powershell
 scripts\export-worker-cache-batch.bat snapshot -SnapshotName default-clean
 scripts\export-worker-cache-batch.bat export -Group "R18模型整合" -SnapshotName default-clean --unsafe-order-pair
 ```
 
-Use that only for protocol experiments. The supported way to make Paper clients
-show new models is still the Velocity/Freesia capture exporter.
+仅将其用于协议实验。要让 Paper 客户端显示新模型，目前仍应使用 Velocity/Freesia 捕获导出器，这是受支持的方式。
 
-For day-to-day local work, `scripts\paperysm.bat` wraps the common workflow in a
-single Python menu:
+日常本地工作可以使用 `scripts\paperysm.bat`，它通过一个 Python 菜单封装常用流程：
 
 ```powershell
 scripts\paperysm.bat
 ```
 
-The same tool also supports direct commands such as `status`, `copy-models`,
-`start-stack`, `export-capture`, `type3-inspect`, `start-worker`, and
-`start-paper`.
+该工具也支持 `status`、`copy-models`、`start-stack`、`export-capture`、`type3-inspect`、`start-worker` 和 `start-paper` 等直接命令。
 
-## Documentation
+## 文档
 
-- `docs/ysm-sync-progress.md`: current protocol progress and flowchart.
-- `docs/paperysm-production-deploy.md`: copying PaperYSM to a real Paper server
-  and removing FreesiaII from a Velocity stack.
-- `docs/native-reimplementation.md`: native cache reimplementation notes.
-- `docs/prototype-notes.md`: older working README kept for historical detail.
+- `docs/ysm-sync-progress.md`：当前协议进度和流程图。
+- `docs/paperysm-production-deploy.md`：将 PaperYSM 复制到实际 Paper 服务器，并从 Velocity 栈中移除 FreesiaII。
+- `docs/native-reimplementation.md`：原生缓存重实现说明。
+- `docs/prototype-notes.md`：保留历史细节的旧版工作 README。
 
-## References
+## 参考资料
 
-Reference material is intentionally kept inside `references/` so the project can
-be studied without jumping between separate folders:
+参考材料有意保存在 `references/` 中，因此无需在多个独立目录之间跳转即可研究项目：
 
-- `references/YSMParser` contains the parser implementation that taught us the
-  `.ysm` V3 format, hashed path mapping, compression, and export layout.
-- `references/FreesiaII` contains the FreesiaII jars and release metadata used
-  to compare packet behavior.
-- `references/decompiled` contains decompiled/extracted YSM client material used
-  to inspect protocol and native-cache behavior.
+- `references/YSMParser` 包含解析器实现，其中记录了 `.ysm` V3 格式、哈希路径映射、压缩方式和导出布局。
+- `references/FreesiaII` 包含用于对比数据包行为的 FreesiaII JAR 文件和发行版元数据。
+- `references/decompiled` 包含用于检查协议和原生缓存行为的反编译/提取 YSM 客户端材料。
